@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>电磁感应仿真 Pro - 频率与距离控制</title>
+    <style>
+        body { font-family: 'PingFang SC', system-ui, sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+        .main-container { display: flex; gap: 20px; max-width: 1100px; width: 100%; }
+        canvas { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .side-panel { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+        .control-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        h2 { margin-top: 0; color: #1a73e8; font-size: 1.1rem; border-left: 4px solid #1a73e8; padding-left: 10px; }
+        label { display: block; margin-bottom: 8px; font-weight: 500; color: #444; font-size: 0.9rem; }
+        input[type="range"] { width: 100%; height: 6px; border-radius: 5px; cursor: pointer; margin-bottom: 15px; }
+        .data-row { display: flex; justify-content: space-between; margin: 8px 0; font-family: 'Courier New', monospace; font-size: 1rem; }
+        .val-box { color: #d93025; font-weight: bold; }
+        .formula { font-size: 0.8rem; color: #666; background: #f8f9fa; padding: 10px; border-radius: 6px; line-height: 1.5; }
+        #chartCanvas { margin-top: 20px; width: 100%; height: 180px; background: #fff; border-radius: 12px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <canvas id="simCanvas" width="650" height="450"></canvas>
+
+        <div class="side-panel">
+            <div class="control-card">
+                <h2>实验控制</h2>
+                <label>距离 d: <span id="dLabel">50</span> px</label>
+                <input type="range" id="dRange" min="10" max="250" value="50">
+                
+                <label>电流频率 f: <span id="fLabel">0.5</span> Hz</label>
+                <input type="range" id="fRange" min="0.1" max="2.0" step="0.1" value="0.5">
+                
+                <hr style="border:0; border-top:1px solid #eee; margin:10px 0;">
+                
+                <h2>实时监测</h2>
+                <div class="data-row"><span>当前频率:</span><span id="fVal" class="val-box">0.50 Hz</span></div>
+                <div class="data-row"><span>导线电流 I:</span><span id="iVal" class="val-box">0.00 A</span></div>
+                <div class="data-row"><span>感应电动势 ε:</span><span id="eVal" class="val-box">0.00 V</span></div>
+            </div>
+
+            <div class="control-card">
+                <div class="formula">
+                    <strong>物理推导：</strong><br>
+                    ε = -dΦ/dt = - (μ₀h/2π) · ln((d+w)/d) · dI/dt <br>
+                    当 I = I₀sin(2πft) 时：<br>
+                    ε ∝ - f · ln(1 + w/d) · cos(2πft)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="chartCanvas" width="1100" height="180"></canvas>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const chartCanvas = document.getElementById('chartCanvas');
+    const cctx = chartCanvas.getContext('2d');
+
+    const dRange = document.getElementById('dRange');
+    const fRange = document.getElementById('fRange');
+    const dLabel = document.getElementById('dLabel');
+    const fLabel = document.getElementById('fLabel');
+    const iValText = document.getElementById('iVal');
+    const eValText = document.getElementById('eVal');
+    const fValText = document.getElementById('fVal');
+
+    // 物理参数
+    let d = parseInt(dRange.value);
+    let freq = parseFloat(fRange.value);
+    const rectWidth = 120; 
+    const rectHeight = 180; 
+    let time = 0;
+    let history = [];
+
+    // 输入监听
+    dRange.oninput = (e) => { d = parseInt(e.target.value); dLabel.innerText = d; };
+    fRange.oninput = (e) => { freq = parseFloat(e.target.value); fLabel.innerText = freq; fValText.innerText = freq.toFixed(2) + " Hz"; };
+
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 1. 核心物理计算
+        const omega = 2 * Math.PI * freq;
+        const current = Math.sin(omega * time);
+        
+        // ε ∝ f * ln((d+w)/d) * cos(wt)
+        const emfFactor = Math.log((d + rectWidth) / d);
+        const emf = -omega * emfFactor * Math.cos(omega * time) * 15; // 15为缩放常数
+
+        iValText.innerText = current.toFixed(2) + " A";
+        eValText.innerText = emf.toFixed(2) + " V";
+
+        const wireX = 80;
+
+        // 2. 绘制导线
+        ctx.beginPath();
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = "#333";
+        ctx.moveTo(wireX, 20);
+        ctx.lineTo(wireX, 430);
+        ctx.stroke();
+
+        // 3. 绘制磁场点阵 (1/r衰减)
+        for (let r = 15; r < 550; r += 20) {
+            const intensity = (20 / r) * Math.abs(current);
+            ctx.fillStyle = current > 0 ? `rgba(0, 120, 255, ${intensity})` : `rgba(255, 50, 50, ${intensity})`;
+            ctx.beginPath();
+            ctx.arc(wireX + r, 225, 2, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        // 4. 绘制矩形回路
+        const rectX = wireX + d;
+        const rectY = (canvas.height - rectHeight) / 2;
+        ctx.beginPath();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = emf > 0 ? "#ff4757" : "#2f3542";
+        if (Math.abs(emf) > 10) ctx.setLineDash([2, 2]); // 高压时虚线闪烁效果
+        else ctx.setLineDash([]);
+        ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
+        ctx.setLineDash([]);
+
+        // 5. 绘制波形图 (带量程控制)
+        drawWaveform(emf);
+
+        time += 0.016; // 约60fps
+        requestAnimationFrame(animate);
+    }
+
+    function drawWaveform(val) {
+        cctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+        history.push(val);
+        if (history.length > chartCanvas.width / 2) history.shift();
+
+        const centerY = chartCanvas.height / 2;
+        
+        // 绘制坐标轴
+        cctx.strokeStyle = "#ddd";
+        cctx.beginPath();
+        cctx.moveTo(0, centerY); cctx.lineTo(chartCanvas.width, centerY);
+        cctx.stroke();
+
+        // 动态量程：计算当前波形需要的垂直缩放
+        // 为了确保在d最小(10)且f最大(2.0)时完整显示，设定一个最大可能值的参考
+        const maxExpectedEmf = 120; // 经验预估峰值
+        const scale = (chartCanvas.height / 2 - 10) / maxExpectedEmf;
+
+        cctx.beginPath();
+        cctx.lineWidth = 2.5;
+        cctx.strokeStyle = "#1e90ff";
+        for (let i = 0; i < history.length; i++) {
+            const x = i * 2;
+            const y = centerY - (history[i] * scale);
+            if (i === 0) cctx.moveTo(x, y);
+            else cctx.lineTo(x, y);
+        }
+        cctx.stroke();
+
+        cctx.fillStyle = "#999";
+        cctx.font = "12px Arial";
+        cctx.fillText("实时电动势波形 (量程已适配最大峰值)", 10, 20);
+        cctx.fillText("+ε max", 5, 20);
+        cctx.fillText("-ε max", 5, chartCanvas.height - 10);
+    }
+
+    animate();
+</script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>转动铜棒动生电动势仿真</title>
+    <style>
+        body { font-family: 'PingFang SC', sans-serif; background: #1a1a1a; color: white; display: flex; flex-direction: column; align-items: center; margin: 0; }
+        .container { display: flex; flex-wrap: wrap; justify-content: center; padding: 20px; gap: 20px; }
+        canvas { background: #000; border-radius: 8px; box-shadow: 0 0 20px rgba(0,255,255,0.2); }
+        .controls { background: #2d2d2d; padding: 25px; border-radius: 8px; width: 320px; }
+        .control-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #aaa; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .data-display { background: #3d3d3d; padding: 15px; border-radius: 6px; border-left: 4px solid #00d4ff; }
+        .value { font-family: 'Courier New', monospace; font-size: 1.2em; color: #00d4ff; font-weight: bold; }
+        .formula { font-style: italic; color: #888; margin-top: 10px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+    <h2>转动导体棒动生电动势模拟</h2>
+
+    <div class="container">
+        <canvas id="simCanvas" width="500" height="500"></canvas>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>角速度 (ω): <span id="wLabel">2.0</span> rad/s</label>
+                <input type="range" id="wRange" min="-10" max="10" step="0.1" value="2">
+            </div>
+
+            <div class="control-group">
+                <label>磁感应强度 (B): <span id="bLabel">1.0</span> T</label>
+                <input type="range" id="bRange" min="0" max="5" step="0.1" value="1">
+            </div>
+
+            <div class="data-display">
+                <div>棒长 (L): <span class="value">2.0 m</span></div>
+                <div style="margin-top:10px;">感应电动势 ε:</div>
+                <div id="eValue" class="value">2.00 V</div>
+                <div class="formula">计算公式: ε = ½BωL²</div>
+            </div>
+            
+            <p style="font-size: 0.8em; color: #666; margin-top: 15px;">
+                * 蓝色背景点代表穿出纸面的磁场 B<br>
+                * 黄色棒代表转动的铜棒
+            </p>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // UI 元素
+    const wRange = document.getElementById('wRange');
+    const bRange = document.getElementById('bRange');
+    const wLabel = document.getElementById('wLabel');
+    const bLabel = document.getElementById('bLabel');
+    const eValue = document.getElementById('eValue');
+
+    // 物理参数
+    let L = 150; // 视觉长度 (像素)
+    let realL = 2.0; // 物理长度 (米)
+    let angle = 0;
+
+    function update() {
+        let omega = parseFloat(wRange.value);
+        let B = parseFloat(bRange.value);
+
+        // 更新文本
+        wLabel.innerText = omega.toFixed(1);
+        bLabel.innerText = B.toFixed(1);
+
+        // 计算电动势 ε = 0.5 * B * omega * L^2
+        let emf = 0.5 * B * omega * Math.pow(realL, 2);
+        eValue.innerText = emf.toFixed(2) + " V";
+
+        // 绘制逻辑
+        draw(omega, B);
+        
+        // 更新角度 (根据 omega)
+        angle += omega * 0.016; // 约60fps
+        requestAnimationFrame(update);
+    }
+
+    function draw(omega, B) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+
+        // 1. 绘制背景磁场 (用点表示穿出纸面)
+        if (B > 0) {
+            ctx.fillStyle = `rgba(0, 212, 255, ${B/5})`;
+            for(let i=20; i<canvas.width; i+=40) {
+                for(let j=20; j<canvas.height; j+=40) {
+                    ctx.beginPath();
+                    ctx.arc(i, j, 2, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        // 2. 绘制转轴 O 点
+        ctx.fillStyle = "white";
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillText("O", cx - 15, cy - 10);
+
+        // 3. 绘制旋转铜棒
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        
+        ctx.strokeStyle = "#FFD700"; // 金色铜棒
+        ctx.lineWidth = 6;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(L, 0);
+        ctx.stroke();
+
+        // 绘制速度矢量箭头 (在棒端)
+        if (Math.abs(omega) > 0.1) {
+            ctx.strokeStyle = "#ff4757";
+            ctx.lineWidth = 2;
+            const velLen = omega * 10;
+            ctx.beginPath();
+            ctx.moveTo(L, 0);
+            ctx.lineTo(L, -velLen);
+            ctx.stroke();
+            ctx.fillText("v", L + 5, -velLen);
+        }
+        
+        ctx.restore();
+
+        // 4. 绘制电动势方向标识 (简易电流流向)
+        if (Math.abs(omega * B) > 0.1) {
+            ctx.fillStyle = "#00ff00";
+            let dir = (omega * B > 0) ? "O → 棒端" : "棒端 → O";
+            ctx.fillText("电流趋向: " + dir, 20, 30);
+        }
+    }
+
+    update();
+</script>
+</body>
+</html>
