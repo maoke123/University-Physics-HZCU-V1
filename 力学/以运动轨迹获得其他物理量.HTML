@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>曲线运动：可缩放平移实验室</title>
+    <style>
+        body { display: flex; flex-direction: column; align-items: center; background: #f0f2f5; font-family: 'Segoe UI', sans-serif; padding: 20px; user-select: none; }
+        .container { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative; }
+        canvas { background: #fff; border: 1px solid #ccc; cursor: crosshair; display: block; }
+        .data-panel { 
+            margin-top: 15px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; 
+            background: #2c3e50; color: white; padding: 15px; border-radius: 8px; font-family: monospace;
+        }
+        .item { border-bottom: 1px solid #3e4f5f; padding: 4px; }
+        .label { color: #bdc3c7; font-size: 11px; }
+        .val { color: #f1c40f; font-size: 14px; font-weight: bold; display: block; }
+        .pos { color: #2ecc71; } .at { color: #ffa500; } .an { color: #ff4d4d; }
+        .controls-hint { margin-top: 10px; color: #7f8c8d; font-size: 12px; text-align: center; line-height: 1.6; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h3 style="text-align:center; margin-top:0;">r = 2t i + (4 - t²) j 全动态分析实验室</h3>
+        <canvas id="simCanvas" width="900" height="550"></canvas>
+        
+        <div class="data-panel">
+            <div class="item"><span class="label">时间 t(s)</span><span class="val" id="tVal">0.00</span></div>
+            <div class="item"><span class="label">坐标 (x, y)</span><span class="val pos" id="posVal">0, 0</span></div>
+            <div class="item"><span class="label">速率 v(m/s)</span><span class="val" id="vVal">0.00</span></div>
+            <div class="item"><span class="label">曲率半径 ρ(m)</span><span class="val" id="rhoVal">0.00</span></div>
+            
+            <div class="item"><span class="label">总加速度 a</span><span class="val">2.00</span></div>
+            <div class="item"><span class="label">切向 at</span><span class="val at" id="atVal">0.00</span></div>
+            <div class="item"><span class="label">法向 an</span><span class="val an" id="anVal">0.00</span></div>
+            <div class="item"><span class="label">缩放比例</span><span class="val" id="zoomVal">100%</span></div>
+        </div>
+        <div class="controls-hint">
+            <b>操作指南：</b><br>
+            [滚轮上下] 缩放坐标轴 | [右键拖拽] 移动坐标轴位置 | [鼠标移动] 追踪轨迹点分析
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 交互状态
+    let scale = 60; // 初始 1m = 60px
+    let offsetX = canvas.width / 2; // 原点 X 像素位置
+    let offsetY = canvas.height - 100; // 原点 Y 像素位置
+    
+    let isPanning = false;
+    let lastMousePos = { x: 0, y: 0 };
+    let currentMousePos = { x: 0, y: 0 };
+
+    function drawGrid() {
+        ctx.save();
+        ctx.strokeStyle = "#f0f0f0";
+        ctx.lineWidth = 1;
+        ctx.font = "10px Arial";
+        ctx.fillStyle = "#aaa";
+
+        // 动态计算步长
+        let zoom = scale / 60;
+        let step = zoom > 2 ? 0.5 : (zoom < 0.4 ? 5 : 1);
+
+        // 垂直线 (X轴刻度)
+        for (let i = -100; i <= 100; i += step) {
+            let x = offsetX + i * scale;
+            if (x < 0 || x > canvas.width) continue;
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            if (Math.abs(i) > 0.1) ctx.fillText(i + "m", x + 2, offsetY - 5);
+        }
+
+        // 水平线 (Y轴刻度)
+        for (let j = -100; j <= 100; j += step) {
+            let y = offsetY - j * scale;
+            if (y < 0 || y > canvas.height) continue;
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            if (Math.abs(j) > 0.1) ctx.fillText(j + "m", offsetX + 5, y - 2);
+        }
+
+        // 主轴绘制
+        ctx.strokeStyle = "#999";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, offsetY); ctx.lineTo(canvas.width, offsetY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(offsetX, 0); ctx.lineTo(offsetX, canvas.height); ctx.stroke();
+        ctx.fillText("原点(0,0)", offsetX + 5, offsetY + 15);
+        ctx.restore();
+    }
+
+    function drawArrow(x, y, angle, len, color, label) {
+        if (Math.abs(len) < 3) return;
+        const head = 10;
+        const ex = x + len * Math.cos(angle);
+        const ey = y + len * Math.sin(angle);
+        ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ex, ey);
+        ctx.lineTo(ex - head * Math.cos(angle - 0.5), ey - head * Math.sin(angle - 0.5));
+        ctx.lineTo(ex - head * Math.cos(angle + 0.5), ey - head * Math.sin(angle + 0.5));
+        ctx.fill();
+        ctx.fillText(label, ex + 5, ey + 5);
+    }
+
+    function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawGrid();
+
+        // 1. 绘制完整抛物线轨迹 (扩展绘制范围)
+        ctx.beginPath(); ctx.strokeStyle = "#3498db"; ctx.setLineDash([4, 4]);
+        for(let t_i = -15; t_i <= 15; t_i += 0.1) {
+            let tx = offsetX + (2 * t_i) * scale;
+            let ty = offsetY - (4 - t_i * t_i) * scale;
+            if(t_i === -15) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
+        }
+        ctx.stroke(); ctx.setLineDash([]);
+
+        // 2. 物理分析点计算
+        let t = (currentMousePos.x - offsetX) / (2 * scale);
+        const x = 2 * t;
+        const y = 4 - t * t;
+        const px = offsetX + x * scale;
+        const py = offsetY - y * scale;
+
+        const vx = 2;
+        const vy_phys = -2 * t;
+        const v = Math.sqrt(vx*vx + vy_phys*vy_phys);
+        const vAngle = Math.atan2(vy_phys * -1, vx); 
+
+        const at = (2 * t) / Math.sqrt(1 + t * t);
+        const an = 2 / Math.sqrt(1 + t * t);
+        const rho = 2 * Math.pow(1 + t * t, 1.5);
+
+        // 3. 绘制曲率圆 (始终在凹侧)
+        const nAngle = vAngle + Math.PI / 2;
+        const cx_circ = px + rho * scale * Math.cos(nAngle);
+        const cy_circ = py + rho * scale * Math.sin(nAngle);
+        
+        ctx.beginPath();
+        ctx.arc(cx_circ, cy_circ, rho * scale, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(231, 76, 60, 0.15)";
+        ctx.stroke();
+
+        // 4. 绘制矢量
+        const vLen = Math.max(15, 15 * (scale/60)); 
+        drawArrow(px, py, vAngle, v * vLen, "#2ecc71", "v");
+        drawArrow(px, py, vAngle + (at < 0 ? Math.PI : 0), Math.abs(at) * vLen * 1.5, "#ffa500", "at");
+        drawArrow(px, py, nAngle, an * vLen * 1.5, "#ff4d4d", "an");
+
+        // 5. 焦点指示
+        ctx.fillStyle = "#2c3e50";
+        ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI*2); ctx.fill();
+
+        // 6. 更新数据
+        document.getElementById('tVal').innerText = t.toFixed(2);
+        document.getElementById('posVal').innerText = `${x.toFixed(2)}, ${y.toFixed(2)}`;
+        document.getElementById('vVal').innerText = v.toFixed(2);
+        document.getElementById('rhoVal').innerText = rho.toFixed(2);
+        document.getElementById('atVal').innerText = at.toFixed(2);
+        document.getElementById('anVal').innerText = an.toFixed(2);
+        document.getElementById('zoomVal').innerText = Math.round((scale/60)*100) + "%";
+    }
+
+    // --- 交互事件 ---
+
+    canvas.addEventListener('contextmenu', e => e.preventDefault()); // 拦截右键菜单
+
+    canvas.addEventListener('mousedown', e => {
+        if (e.button === 2) { // 右键按下
+            isPanning = true;
+            lastMousePos = { x: e.clientX, y: e.clientY };
+        }
+    });
+
+    window.addEventListener('mousemove', e => {
+        const rect = canvas.getBoundingClientRect();
+        currentMousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+        if (isPanning) {
+            const dx = e.clientX - lastMousePos.x;
+            const dy = e.clientY - lastMousePos.y;
+            offsetX += dx;
+            offsetY += dy;
+            lastMousePos = { x: e.clientX, y: e.clientY };
+        }
+        render();
+    });
+
+    window.addEventListener('mouseup', e => {
+        if (e.button === 2) isPanning = false;
+    });
+
+    canvas.addEventListener('wheel', e => {
+        e.preventDefault();
+        const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+        const newScale = scale * zoomFactor;
+        
+        if (newScale > 5 && newScale < 1000) {
+            // 以当前鼠标位置为中心缩放
+            offsetX = currentMousePos.x - (currentMousePos.x - offsetX) * zoomFactor;
+            offsetY = currentMousePos.y - (currentMousePos.y - offsetY) * zoomFactor;
+            scale = newScale;
+        }
+        render();
+    }, { passive: false });
+
+    render();
+</script>
+</body>
+</html>

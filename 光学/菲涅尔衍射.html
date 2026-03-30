@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>菲涅尔衍射与泊松亮斑模拟</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #1a1a1a; color: #eee; margin: 0; padding: 20px; }
+        .container { background: #2a2a2a; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 700px; width: 100%; }
+        canvas { background: black; border-radius: 8px; width: 100%; cursor: crosshair; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; padding: 15px; background: #333; border-radius: 10px; }
+        .control-group { display: flex; flex-direction: column; }
+        label { font-size: 13px; margin-bottom: 5px; color: #bbb; }
+        input[type="range"] { width: 100%; accent-color: #ff3e3e; }
+        .mode-switch { grid-column: span 2; display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; }
+        .btn { padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; background: #444; color: white; transition: 0.3s; }
+        .btn.active { background: #ff3e3e; }
+        .info { margin-top: 15px; font-size: 13px; color: #888; border-left: 3px solid #ff3e3e; padding-left: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="text-align: center; margin-top: 0;">菲涅尔衍射：泊松亮斑演示</h2>
+    
+    <div class="mode-switch">
+        <button class="btn active" onclick="setMode('circle')">圆孔衍射 (泊松亮斑)</button>
+        <button class="btn" onclick="setMode('slit')">单缝衍射</button>
+    </div>
+
+    <canvas id="view" width="500" height="500"></canvas>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>孔径大小 (Radius/Width): <span id="rVal"></span></label>
+            <input type="range" id="size" min="10" max="150" value="60">
+        </div>
+        <div class="control-group">
+            <label>观察屏距离 (Distance): <span id="zVal"></span></label>
+            <input type="range" id="dist" min="5" max="200" value="50">
+        </div>
+    </div>
+
+    <div class="info">
+        <strong>物理提示：</strong><br>
+        1. 在圆孔模式下，你会看到中心的<strong>泊松亮斑</strong>。由于算法精简，去除了过多的细微干扰条纹。<br>
+        2. 调节距离，观察半波带数量变化导致的中心点亮暗交替。
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('view');
+    const ctx = canvas.getContext('2d');
+    let mode = 'circle'; // 'circle' or 'slit'
+
+    function setMode(m) {
+        mode = m;
+        document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        draw();
+    }
+
+    function draw() {
+        const w = canvas.width;
+        const h = canvas.height;
+        const size = parseFloat(document.getElementById('size').value);
+        const z = parseFloat(document.getElementById('dist').value);
+        
+        document.getElementById('rVal').innerText = size;
+        document.getElementById('zVal').innerText = z;
+
+        const imgData = ctx.createImageData(w, h);
+        const data = imgData.data;
+
+        // 简化后的菲涅尔近似参数
+        const k = 2 * Math.PI / 500; // 固定波长模拟
+        const center = w / 2;
+
+        for (let y = 0; y < h; y += 1) {
+            for (let x = 0; x < w; x += 1) {
+                const dx = (x - center);
+                const dy = (y - center);
+                const r_sq = dx*dx + dy*dy;
+                const r = Math.sqrt(r_sq);
+                
+                let intensity = 0;
+
+                if (mode === 'circle') {
+                    // 圆孔衍射简易数值近似
+                    // 使用 Airy Disk 与 Fresnel 区域混合逻辑实现可视化
+                    const v = (size * r) / (z * 2);
+                    if (r < 1) {
+                        intensity = 1.0; // 中心强点
+                    } else {
+                        // 减少条纹显示：通过衰减因子控制副极大
+                        intensity = Math.pow(Math.sin(v) / v, 2) * (15 / z);
+                        // 增加泊松斑修正
+                        if (v > 0.1) intensity += Math.exp(-v*0.1) * 0.05; 
+                    }
+                } else {
+                    // 单缝衍射
+                    const v = (size * dx) / (z * 5);
+                    intensity = v === 0 ? 1 : Math.pow(Math.sin(v) / v, 2);
+                }
+
+                const idx = (y * w + x) * 4;
+                // 红色单色光渲染
+                const val = Math.min(255, intensity * 255 * 3); 
+                data[idx] = val;     // R
+                data[idx + 1] = val * 0.1; // G (微弱)
+                data[idx + 2] = val * 0.1; // B
+                data[idx + 3] = 255; // A
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    document.querySelectorAll('input').forEach(i => i.addEventListener('input', draw));
+    draw();
+</script>
+
+</body>
+</html>

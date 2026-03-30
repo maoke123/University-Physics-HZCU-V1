@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>气体分子的碰撞与平均自由程 (含温度变量)</title>
+    <script>
+        MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --primary: #2563eb; --bg-color: #f8fafc; --card-bg: #ffffff;
+            --text-main: #1e293b; --text-light: #64748b;
+            --tracked-color: #ef4444; --freq-color: #f59e0b;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color); color: var(--text-main);
+            margin: 0; padding: 30px 20px; display: flex; justify-content: center;
+        }
+        .container {
+            background-color: var(--card-bg); padding: 30px; border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); width: 100%; max-width: 1300px;
+            display: flex; flex-direction: column; gap: 20px;
+        }
+        .header { text-align: center; padding-bottom: 20px; border-bottom: 1px solid #e2e8f0; }
+        .header h1 { margin: 0 0 10px 0; font-size: 26px; }
+        .header p { margin: 0; color: var(--text-light); font-size: 15px; }
+        
+        .main-content { display: flex; flex-wrap: wrap; gap: 30px; align-items: flex-start; }
+        .left-panel { flex: 0 0 360px; display: flex; flex-direction: column; gap: 20px; }
+        .right-panel { flex: 1; min-width: 600px; display: flex; flex-direction: column; align-items: center; }
+
+        .controls { padding: 20px; background-color: #f1f5f9; border-radius: 8px; display: flex; flex-direction: column; gap: 15px; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        label { font-weight: 600; font-size: 13px; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .btn-reset {
+            background-color: var(--primary); color: white; border: none; padding: 10px;
+            border-radius: 6px; cursor: pointer; font-weight: bold; transition: background 0.2s; margin-top: 5px;
+        }
+        .btn-reset:hover { background-color: #1d4ed8; }
+        
+        canvas {
+            display: block; width: 100%; height: auto; max-height: 550px;
+            border: 2px solid #cbd5e1; border-radius: 8px; background-color: #f8fafc;
+        }
+        
+        .legend {
+            display: flex; justify-content: center; gap: 25px; margin-top: 15px;
+            font-size: 14px; padding: 15px; background-color: #f1f5f9; border-radius: 8px; width: 100%; box-sizing: border-box;
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-weight: 500;}
+        .color-box { width: 14px; height: 14px; border-radius: 50%; }
+        
+        .math-section { padding: 20px; background-color: #fafafa; border: 1px solid #e2e8f0; border-radius: 8px; }
+        .formulas-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 15px; }
+        .formula-card { background: white; padding: 12px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; border-left: 4px solid var(--primary); }
+        .card-tracked { border-left-color: var(--tracked-color); }
+        .card-freq { border-left-color: var(--freq-color); }
+        
+        .formula-title { font-weight: bold; font-size: 13px; margin-bottom: 5px; }
+        .val-display { font-size: 18px; font-weight: bold; margin-top: 5px; color: var(--text-main); }
+        .unit { font-size: 12px; color: var(--text-light); font-weight: normal; }
+
+        .stat-row { display: flex; justify-content: space-between; gap: 10px; }
+        .stat-row .formula-card { flex: 1; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>理想气体分子碰撞与平均自由程追踪</h1>
+        <p>固定容器体积：改变温度时，观察“碰撞频率”的变化，以及“平均自由程”为何保持不变。</p>
+    </div>
+
+    <div class="main-content">
+        <div class="left-panel">
+            <div class="controls">
+                <div class="control-group">
+                    <label>温度 T (决定运动速率): <span id="tempVal" style="color:#ef4444;">300</span> K</label>
+                    <input type="range" id="tempSlider" min="50" max="1200" value="300" step="10">
+                </div>
+                <div class="control-group">
+                    <label>分子总数 N (反映密度 n): <span id="densityVal" style="color:var(--primary);">150</span></label>
+                    <input type="range" id="densitySlider" min="20" max="300" value="150" step="10">
+                </div>
+                <div class="control-group">
+                    <label>分子直径 d: <span id="radiusVal" style="color:var(--primary);">6</span></label>
+                    <input type="range" id="radiusSlider" min="3" max="12" value="6" step="1">
+                </div>
+                <button class="btn-reset" onclick="resetSimulation()">清空轨迹并重新统计</button>
+            </div>
+
+            <div class="math-section">
+                <h3 style="margin:0; font-size:14px; text-align:center;">实时统计 (针对红色分子)</h3>
+                <div class="formulas-grid">
+                    <div class="stat-row">
+                        <div class="formula-card card-tracked">
+                            <div class="formula-title" style="color: var(--tracked-color);">累计碰撞 $Z$</div>
+                            <div class="val-display" id="statZ">0 <span class="unit">次</span></div>
+                        </div>
+                        <div class="formula-card card-tracked">
+                            <div class="formula-title" style="color: var(--tracked-color);">累计路程 $S$</div>
+                            <div class="val-display" id="statS">0 <span class="unit">单位</span></div>
+                        </div>
+                    </div>
+                    
+                    <div class="formula-card card-freq">
+                        <div class="formula-title" style="color: var(--freq-color);">平均碰撞频率 $\bar{Z}$ (与 $\sqrt{T}$ 正相关)</div>
+                        <div style="font-size: 13px;">$$\bar{Z} = \sqrt{2}\pi d^2 n \bar{v}$$</div>
+                        <div class="val-display" style="color: var(--freq-color);" id="statFreq">0.0 <span class="unit">次 / 秒</span></div>
+                    </div>
+
+                    <div class="formula-card" style="border-left-color: #8b5cf6;">
+                        <div class="formula-title" style="color: #8b5cf6;">模拟平均自由程 $\bar{\lambda}$ (与 $T$ 无关)</div>
+                        <div style="font-size: 13px;">$$\bar{\lambda} = \frac{S}{Z} = \frac{1}{\sqrt{2}\pi d^2 n}$$</div>
+                        <div class="val-display" style="color: #8b5cf6;" id="statLambda">0.0 <span class="unit">单位 / 次</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <canvas id="simCanvas" width="800" height="550"></canvas>
+            <div class="legend">
+                <div class="legend-item"><div class="color-box" style="background: rgba(148, 163, 184, 0.5);"></div> 背景分子</div>
+                <div class="legend-item"><div class="color-box" style="background: var(--tracked-color);"></div> 追踪分子</div>
+                <div class="legend-item" style="gap: 2px;">
+                    <div style="width: 20px; height: 3px; background: var(--tracked-color);"></div>
+                    <span style="margin-left: 4px;">运动轨迹</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 物理参数
+    let numParticles = parseInt(document.getElementById('densitySlider').value);
+    let particleRadius = parseFloat(document.getElementById('radiusSlider').value);
+    let temperature = parseFloat(document.getElementById('tempSlider').value);
+    const baseSpeedAt300K = 2.5; 
+    
+    let particles = [];
+    let pathHistory = [];
+    const maxPathLength = 300; 
+    
+    let stats = { collisions: 0, distance: 0, lastX: 0, lastY: 0, frames: 0 };
+
+    class Particle {
+        constructor(x, y, r, isTracked = false) {
+            this.x = x; this.y = y; this.r = r; this.isTracked = isTracked;
+            const angle = Math.random() * Math.PI * 2;
+            const currentSpeed = baseSpeedAt300K * Math.sqrt(temperature / 300);
+            this.vx = Math.cos(angle) * currentSpeed;
+            this.vy = Math.sin(angle) * currentSpeed;
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+            if (this.isTracked) {
+                ctx.fillStyle = '#ef4444';
+                ctx.shadowBlur = 10; ctx.shadowColor = '#ef4444';
+            } else {
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+                ctx.shadowBlur = 0;
+            }
+            ctx.fill(); ctx.shadowBlur = 0;
+        }
+
+        update() {
+            this.x += this.vx; this.y += this.vy;
+            if (this.x - this.r < 0) { this.x = this.r; this.vx *= -1; }
+            if (this.x + this.r > canvas.width) { this.x = canvas.width - this.r; this.vx *= -1; }
+            if (this.y - this.r < 0) { this.y = this.r; this.vy *= -1; }
+            if (this.y + this.r > canvas.height) { this.y = canvas.height - this.r; this.vy *= -1; }
+        }
+    }
+
+    function initSimulation() {
+        particles = []; pathHistory = [];
+        stats = { collisions: 0, distance: 0, lastX: 0, lastY: 0, frames: 0 };
+
+        const tracked = new Particle(canvas.width / 2, canvas.height / 2, particleRadius, true);
+        particles.push(tracked);
+        stats.lastX = tracked.x; stats.lastY = tracked.y;
+        pathHistory.push({x: tracked.x, y: tracked.y});
+
+        for (let i = 1; i < numParticles; i++) {
+            let x, y, isOverlapping, attempts = 0;
+            do {
+                isOverlapping = false;
+                x = Math.random() * (canvas.width - 2 * particleRadius) + particleRadius;
+                y = Math.random() * (canvas.height - 2 * particleRadius) + particleRadius;
+                for (let p of particles) {
+                    const dx = x - p.x, dy = y - p.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < particleRadius * 2) { isOverlapping = true; break; }
+                }
+                attempts++;
+            } while (isOverlapping && attempts < 100);
+            particles.push(new Particle(x, y, particleRadius));
+        }
+        updateUI();
+    }
+
+    function handleCollisions() {
+        for (let i = 0; i < particles.length; i++) {
+            for (let j = i + 1; j < particles.length; j++) {
+                const p1 = particles[i], p2 = particles[j];
+                const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const minDist = p1.r + p2.r;
+
+                if (dist < minDist) {
+                    const nx = dx / dist, ny = dy / dist;
+                    const vx = p2.vx - p1.vx, vy = p2.vy - p1.vy;
+                    const vn = vx * nx + vy * ny;
+                    if (vn > 0) continue;
+
+                    const impulse = -vn;
+                    p1.vx -= impulse * nx; p1.vy -= impulse * ny;
+                    p2.vx += impulse * nx; p2.vy += impulse * ny;
+
+                    const overlap = minDist - dist;
+                    p1.x -= (overlap / 2) * nx; p1.y -= (overlap / 2) * ny;
+                    p2.x += (overlap / 2) * nx; p2.y += (overlap / 2) * ny;
+
+                    if (p1.isTracked || p2.isTracked) {
+                        stats.collisions++;
+                        const trackedP = p1.isTracked ? p1 : p2;
+                        pathHistory.push({x: trackedP.x, y: trackedP.y});
+                        if (pathHistory.length > maxPathLength) pathHistory.shift();
+                    }
+                }
+            }
+        }
+    }
+
+    function updateUI() {
+        document.getElementById('statZ').innerText = stats.collisions + " 次";
+        document.getElementById('statS').innerHTML = stats.distance.toFixed(0) + " <span class='unit'>单位</span>";
+        
+        let timeSeconds = stats.frames / 60; // 假设 60fps
+        let freq = timeSeconds > 0 ? (stats.collisions / timeSeconds) : 0;
+        document.getElementById('statFreq').innerHTML = freq.toFixed(1) + " <span class='unit'>次/秒</span>";
+
+        let lambda = stats.collisions === 0 ? 0 : (stats.distance / stats.collisions);
+        document.getElementById('statLambda').innerHTML = lambda.toFixed(2) + " <span class='unit'>单位/次</span>";
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        stats.frames++;
+        
+        handleCollisions();
+        
+        if (pathHistory.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(pathHistory[0].x, pathHistory[0].y);
+            for (let i = 1; i < pathHistory.length; i++) ctx.lineTo(pathHistory[i].x, pathHistory[i].y);
+            ctx.lineTo(particles[0].x, particles[0].y);
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)'; ctx.lineWidth = 2; ctx.stroke();
+        }
+
+        for (let p of particles) { p.update(); p.draw(); }
+
+        const tp = particles[0];
+        const dx = tp.x - stats.lastX, dy = tp.y - stats.lastY;
+        stats.distance += Math.sqrt(dx*dx + dy*dy);
+        stats.lastX = tp.x; stats.lastY = tp.y;
+
+        if (stats.frames % 5 === 0) updateUI(); // 限制 UI 刷新频率
+
+        requestAnimationFrame(animate);
+    }
+
+    // 事件监听
+    document.getElementById('tempSlider').addEventListener('input', (e) => {
+        let newTemp = parseFloat(e.target.value);
+        document.getElementById('tempVal').innerText = newTemp;
+        
+        // 核心逻辑：按温度比值的平方根动态调整所有分子的当前速度
+        let ratio = Math.sqrt(newTemp / temperature);
+        temperature = newTemp;
+        for(let p of particles) {
+            p.vx *= ratio;
+            p.vy *= ratio;
+        }
+    });
+
+    document.getElementById('densitySlider').addEventListener('input', (e) => {
+        numParticles = parseInt(e.target.value);
+        document.getElementById('densityVal').innerText = numParticles;
+        initSimulation();
+    });
+
+    document.getElementById('radiusSlider').addEventListener('input', (e) => {
+        particleRadius = parseFloat(e.target.value);
+        document.getElementById('radiusVal').innerText = particleRadius;
+        for (let p of particles) p.r = particleRadius;
+        stats.collisions = 0; stats.distance = 0; stats.frames = 0;
+        pathHistory = [{x: particles[0].x, y: particles[0].y}];
+    });
+
+    window.resetSimulation = () => initSimulation();
+
+    initSimulation(); animate();
+</script>
+</body>
+</html>

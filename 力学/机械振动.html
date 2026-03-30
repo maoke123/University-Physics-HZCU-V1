@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>简谐振动与旋转矢量演示</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h2 { color: #333; }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        canvas {
+            border: 1px solid #ccc;
+            background-color: #fff;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            max-width: 800px;
+            width: 100%;
+        }
+        .control-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        input[type=range] { width: 150px; }
+        .data-panel {
+            margin-top: 15px;
+            padding: 15px;
+            background: #eef2f5;
+            border-radius: 5px;
+            font-size: 15px;
+            line-height: 2.2; /* 增大行高适应公式高度 */
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>简谐振动与旋转矢量同步演示</h2>
+    <canvas id="simCanvas" width="800" height="300"></canvas>
+    
+    <div class="controls">
+        <div class="control-group">
+            <label>振幅 <span id="labelA"></span> (m): <span id="valA">100</span></label>
+            <input type="range" id="sliderA" min="20" max="120" value="100" step="1">
+        </div>
+        <div class="control-group">
+            <label>初相位 <span id="labelPhi"></span> (rad): <span id="valPhi">0.00</span></label>
+            <input type="range" id="sliderPhi" min="-3.14" max="3.14" value="0" step="0.01">
+        </div>
+        <div class="control-group">
+            <label>劲度系数 <span id="labelK"></span> (N/m): <span id="valK">50</span></label>
+            <input type="range" id="sliderK" min="10" max="100" value="50" step="1">
+        </div>
+        <div class="control-group">
+            <label>振子质量 <span id="labelM"></span> (kg): <span id="valM">2</span></label>
+            <input type="range" id="sliderM" min="0.5" max="5" value="2" step="0.1">
+        </div>
+    </div>
+
+    <div class="data-panel" id="dataPanel">
+        </div>
+</div>
+
+<script>
+    // 初始化控件标签公式
+    katex.render("A", document.getElementById('labelA'));
+    katex.render("\\phi", document.getElementById('labelPhi'));
+    katex.render("k", document.getElementById('labelK'));
+    katex.render("m", document.getElementById('labelM'));
+
+    // 预渲染面板公式（避免在每帧循环中重复计算）
+    const f_omega = katex.renderToString("\\omega = \\sqrt{k/m}");
+    const f_x = katex.renderToString("x = A\\cos(\\omega t + \\phi)");
+    const f_v = katex.renderToString("v = -A\\omega\\sin(\\omega t + \\phi)");
+    const f_E = katex.renderToString("E = E_k + E_p");
+
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // UI 控件
+    const sliderA = document.getElementById('sliderA');
+    const sliderPhi = document.getElementById('sliderPhi');
+    const sliderK = document.getElementById('sliderK');
+    const sliderM = document.getElementById('sliderM');
+    
+    const valA = document.getElementById('valA');
+    const valPhi = document.getElementById('valPhi');
+    const valK = document.getElementById('valK');
+    const valM = document.getElementById('valM');
+    const dataPanel = document.getElementById('dataPanel');
+
+    // 物理参数
+    let A = parseFloat(sliderA.value);
+    let phi = parseFloat(sliderPhi.value);
+    let k = parseFloat(sliderK.value);
+    let m = parseFloat(sliderM.value);
+    
+    // 动画时间变量
+    let t = 0;
+    let lastTime = performance.now();
+
+    // 更新参数
+    function updateParams() {
+        A = parseFloat(sliderA.value);
+        phi = parseFloat(sliderPhi.value);
+        k = parseFloat(sliderK.value);
+        m = parseFloat(sliderM.value);
+        
+        valA.innerText = A.toFixed(1);
+        valPhi.innerText = phi.toFixed(2);
+        valK.innerText = k.toFixed(1);
+        valM.innerText = m.toFixed(1);
+    }
+
+    // 监听滑动条
+    sliderA.addEventListener('input', updateParams);
+    sliderPhi.addEventListener('input', updateParams);
+    sliderK.addEventListener('input', updateParams);
+    sliderM.addEventListener('input', updateParams);
+
+    // 绘制弹簧辅助函数
+    function drawSpring(ctx, startX, startY, endX, endY, coils) {
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        const length = endX - startX;
+        const coilLen = length / coils;
+        for (let i = 0; i < coils; i++) {
+            let x1 = startX + i * coilLen;
+            let x2 = startX + (i + 0.5) * coilLen;
+            let x3 = startX + (i + 1) * coilLen;
+            ctx.lineTo(x1 + coilLen*0.25, startY - 15);
+            ctx.lineTo(x2 + coilLen*0.25, startY + 15);
+            ctx.lineTo(x3, startY);
+        }
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
+    function draw() {
+        const currentTime = performance.now();
+        const dt = (currentTime - lastTime) / 1000; 
+        lastTime = currentTime;
+        
+        t += dt * 2; 
+
+        // 计算物理量
+        const omega = Math.sqrt(k / m);
+        const currentPhase = omega * t + phi;
+        const x = A * Math.cos(currentPhase);
+        const v = -A * omega * Math.sin(currentPhase);
+
+        // 清空画布
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // --- 左侧：旋转矢量图 ---
+        const cx = 200; 
+        const cy = 150;
+        
+        ctx.beginPath();
+        ctx.moveTo(cx - 150, cy); ctx.lineTo(cx + 150, cy);
+        ctx.moveTo(cx, cy - 150); ctx.lineTo(cx, cy + 150);
+        ctx.strokeStyle = '#ccc'; ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.arc(cx, cy, A, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#333';
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const vx = cx + A * Math.cos(currentPhase);
+        const vy = cy - A * Math.sin(currentPhase); 
+        
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(vx, vy);
+        ctx.strokeStyle = '#d9534f';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.arc(vx, vy, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#d9534f';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(vx, vy);
+        ctx.lineTo(vx, cy);
+        ctx.strokeStyle = '#5bc0de';
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        ctx.beginPath();
+        ctx.arc(vx, cy, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#5bc0de';
+        ctx.fill();
+
+        // --- 右侧：弹簧振子模型 ---
+        const originX = 600; 
+        const originY = 150;
+        const wallX = 400; 
+        
+        ctx.beginPath();
+        ctx.moveTo(originX, 50);
+        ctx.lineTo(originX, 250);
+        ctx.strokeStyle = '#999';
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#999';
+        ctx.fillText("平衡位置 O", originX - 30, 40);
+
+        const blockX = originX + x;
+        
+        drawSpring(ctx, wallX, originY, blockX - 25, originY, 15);
+        
+        ctx.fillStyle = '#5cb85c';
+        ctx.fillRect(blockX - 25, originY - 20, 50, 40);
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(blockX - 25, originY - 20, 50, 40);
+        ctx.fillStyle = 'white';
+        ctx.font = '16px Arial';
+        ctx.fillText("m", blockX - 7, originY + 5);
+
+        ctx.beginPath();
+        ctx.moveTo(vx, cy);
+        ctx.lineTo(blockX, originY);
+        ctx.strokeStyle = 'rgba(91, 192, 222, 0.5)';
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        ctx.moveTo(wallX - 20, originY + 20);
+        ctx.lineTo(800, originY + 20);
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(wallX, originY + 20);
+        ctx.lineTo(wallX, originY - 50);
+        ctx.stroke();
+
+        // 更新数据面板 (结合预渲染的 KaTeX HTML字符串)
+        const Ek = 0.5 * m * v * v;
+        const Ep = 0.5 * k * x * x;
+        const E = Ek + Ep;
+
+        dataPanel.innerHTML = `
+            <strong>当前物理量:</strong><br>
+            圆频率 ${f_omega} : ${omega.toFixed(2)} rad/s<br>
+            位移 ${f_x} : ${x.toFixed(2)} m<br>
+            速度 ${f_v} : ${v.toFixed(2)} m/s<br>
+            总机械能 ${f_E} : ${E.toFixed(0)} J
+        `;
+
+        requestAnimationFrame(draw);
+    }
+
+    draw();
+</script>
+</body>
+</html>

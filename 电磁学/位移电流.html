@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>全安培环路定理 - 最终稳定版</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    
+    <script>
+    window.MathJax = {
+      // 加载颜色扩展
+      loader: { load: ['[tex]/color'] },
+      tex: {
+        // 注册颜色包
+        packages: {'[+]': ['color']}, 
+        // 允许 $...$ 行内公式
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      },
+      startup: {
+        // 2. 确保页面加载完成后，强制进行一次排版
+        pageReady: () => {
+          return MathJax.startup.defaultPageReady();
+        }
+      },
+      svg: {
+        fontCache: 'global'
+      }
+    };
+    </script>
+    
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #0f172a; --panel: #1e293b; --blue: #00f2ff; --red: #ff3e3e; --green: #39ff14; --copper: #b87333; }
+        body { margin: 0; background: var(--bg); color: #f8fafc; font-family: 'PingFang SC', sans-serif; display: flex; flex-direction: column; align-items: center; padding-bottom: 50px; }
+        .controls { padding: 15px; background: var(--panel); width: 100%; display: flex; justify-content: center; gap: 20px; border-bottom: 2px solid #334155; flex-wrap: wrap; position: sticky; top: 0; z-index: 100; }
+        .control-group { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+        canvas { background: #000; border: 2px solid #334155; border-radius: 12px; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
+        .oscilloscope-frame { position: relative; border: 4px solid #475569; border-radius: 10px; background: #000; padding: 10px; margin-top: 10px; }
+        .formula-card { margin: 20px; padding: 25px; background: var(--panel); border-radius: 12px; text-align: center; width: 850px; border: 1px solid #334155; min-height: 180px; }
+        .legend-wave { display: flex; gap: 40px; justify-content: center; margin-top: 10px; font-weight: bold; }
+        input[type=range] { cursor: pointer; accent-color: var(--blue); }
+        select { background:#0f172a; color:white; border:1px solid #475569; padding:5px; border-radius:4px; }
+        button { padding: 8px 16px; cursor: pointer; background: var(--blue); border: none; border-radius: 6px; font-weight: bold; color: #000; }
+        .hint-bar { margin: 10px; color: var(--blue); font-size: 0.9rem; font-weight: bold; }
+        .dynamic-val { color: var(--blue); font-weight: bold; border-bottom: 1px dashed; }
+    </style>
+</head>
+<body>
+<div class="controls">
+    <button id="playBtn">播放 / 暂停</button>
+    <div class="control-group">
+        <span>频率 $\omega$:</span> <input type="range" id="freq" min="0.01" max="0.1" step="0.01" value="0.04">
+    </div>
+    <div class="control-group">
+        <span>极板面积 $S$:</span> <input type="range" id="size" min="80" max="160" step="10" value="120">
+    </div>
+    <div class="control-group">
+        <span style="color:var(--copper)">线圈匝数 $N$:</span> <input type="range" id="turns" min="1" max="50" step="1" value="10">
+    </div>
+    <div class="control-group">
+        <span>介质常数 $\epsilon$:</span>
+        <select id="eps">
+            <option value="1.5">低 (空气 1.5)</option>
+            <option value="5">中 (云母 5)</option>
+            <option value="15">高 (陶瓷 15)</option>
+        </select>
+    </div>
+</div>
+
+<div class="hint-bar" id="lockHint">💡 提示：在极板间点击鼠标可“锁定”线圈位置</div>
+
+<div class="main-container" style="display:flex; flex-direction:column; align-items:center; gap:10px;">
+    <canvas id="sceneCanvas" width="850" height="340"></canvas>
+    
+    <div class="oscilloscope-frame">
+        <canvas id="waveCanvas" width="850" height="240"></canvas>
+        <div style="position:absolute; top:15px; right:20px; color:#475569; font-size:10px; font-family:monospace;">🖱️ SCROLL TO ZOOM (Y-AXIS)</div>
+    </div>
+
+    <div class="legend-wave">
+        <div style="color:var(--red)">—— 位移电流 $I_d$</div>
+        <div style="color:var(--green)">—— 线圈探测信号 (磁场 $\mathbf{H}$)</div>
+    </div>
+</div>
+
+<div class="formula-card">
+    <div id="math-output" style="font-size: 1.6rem; margin-bottom: 15px;"></div>
+    <div id="math-detail" style="color: #94a3b8; font-size: 1.1rem;"></div>
+</div>
+
+<script>
+    const sCanvas = document.getElementById('sceneCanvas');
+    const wCanvas = document.getElementById('waveCanvas');
+    const sCtx = sCanvas.getContext('2d');
+    const wCtx = wCanvas.getContext('2d');
+    const lockHint = document.getElementById('lockHint');
+    const mathOutput = document.getElementById('math-output');
+    const mathDetail = document.getElementById('math-detail');
+    
+    let time = 0, isRunning = true;
+    let mouseR = 0;
+    let isLocked = false; 
+    const waveHistory = [];
+    const maxHistory = 300;
+    
+    let yAxisRange = 100;
+
+    const fIn = document.getElementById('freq'), 
+          sIn = document.getElementById('size'), 
+          tIn = document.getElementById('turns'),
+          eIn = document.getElementById('eps');
+
+    wCanvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const zoomSpeed = 0.1;
+        if (e.deltaY > 0) {
+            yAxisRange *= (1 + zoomSpeed);
+        } else {
+            yAxisRange *= (1 - zoomSpeed);
+        }
+        if(yAxisRange < 10) yAxisRange = 10;
+    }, { passive: false });
+
+    [fIn, sIn, tIn, eIn].forEach(el => {
+        el.addEventListener('input', updateFormula);
+    });
+
+    function updateFormula() {
+        const N = tIn.value;
+        const eps = eIn.value;
+        const r = mouseR.toFixed(0);
+        
+        // 【关键修复】 JS字符串中必须使用双反斜杠 \\ 才能输出 LaTeX 命令
+        // 之前的 \color 被浏览器转义成了 color，导致 MathJax 无法识别
+        const mainFormula = `\\oint_L \\mathbf{H} \\cdot d\\mathbf{l} = I_d \\propto \\epsilon_{(${eps})} \\cdot S`;
+        
+        // 颜色语法修复：使用 {\\color{orange} 内容}
+        const detailFormula = `V_{signal} \\propto {\\color{orange} N_{(${N})}} \\cdot r_{(${r})} \\cdot I_d`;
+        
+        // 重新注入 HTML
+        mathOutput.innerHTML = `\\[ ${mainFormula} \\]`;
+        mathDetail.innerHTML = `\\[ ${detailFormula} \\]`;
+        
+        // 触发 MathJax 渲染
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            MathJax.typesetPromise([mathOutput, mathDetail]).catch((err) => console.log(err));
+        }
+    }
+
+    document.getElementById('playBtn').onclick = () => isRunning = !isRunning;
+
+    sCanvas.onmousemove = (e) => {
+        if (isLocked) return;
+        const rect = sCanvas.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        const x = e.clientX - rect.left;
+        const plateRadius = parseFloat(sIn.value);
+        if (x > 350 && x < 500) {
+            mouseR = Math.min(plateRadius, Math.abs(y - 170));
+            updateFormula(); 
+        } else {
+            mouseR = 0;
+        }
+    };
+
+    sCanvas.onclick = (e) => {
+        const rect = sCanvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        if (x > 350 && x < 500 && mouseR > 0) {
+            isLocked = !isLocked;
+            lockHint.innerText = isLocked ? "🔒 线圈已锁定半径，现在可以调节上方滑块" : "💡 提示：在极板间点击鼠标可“锁定”线圈位置";
+            lockHint.style.color = isLocked ? "var(--green)" : "var(--blue)";
+        } else if (isLocked) {
+            isLocked = false;
+            lockHint.innerText = "💡 提示：在极板间点击鼠标可“锁定”线圈位置";
+            lockHint.style.color = "var(--blue)";
+        }
+    };
+
+    function draw() {
+        if (isRunning) {
+            const cx = 425, cy = 170;
+            const R = parseFloat(sIn.value);
+            const omega = parseFloat(fIn.value);
+            const turns = parseFloat(tIn.value);
+            const eps = parseFloat(eIn.value);
+            
+            time += omega;
+            sCtx.clearRect(0, 0, 850, 340);
+
+            // 绘制极板
+            const drawPlate = (x) => {
+                sCtx.save();
+                sCtx.translate(x, cy);
+                sCtx.beginPath(); sCtx.ellipse(0, 0, 15, R, 0, 0, Math.PI*2);
+                sCtx.strokeStyle = "#475569"; sCtx.lineWidth = 2; sCtx.stroke();
+                sCtx.clip();
+                sCtx.beginPath();
+                for(let i=-R; i<R; i+=12) { sCtx.moveTo(-20, i); sCtx.lineTo(20, i+12); }
+                sCtx.stroke();
+                sCtx.restore();
+            };
+            drawPlate(cx - 75); drawPlate(cx + 75);
+
+            // 物理量
+            const baseId = Math.cos(time) * eps * (R/100);
+            const displayId = baseId * 20; 
+            const displayH = displayId * (mouseR / R) * (turns / 10);
+
+            // 电场
+            const alpha = Math.abs(Math.sin(time));
+            sCtx.strokeStyle = sCtx.fillStyle = `rgba(255, 62, 62, ${alpha})`;
+            const lines = Math.floor(R / 25);
+            for(let i = -lines; i <= lines; i++) {
+                drawPhysArrow(sCtx, cx-60, cy+i*30, cx+65, cy+i*30, Math.sin(time) > 0);
+            }
+
+            // 探测线圈
+            if (mouseR > 0) {
+                sCtx.save();
+                sCtx.translate(cx, cy);
+                sCtx.strokeStyle = isLocked ? "#ffd700" : "#b87333"; 
+                sCtx.lineWidth = isLocked ? 3 : 2;
+                const visualTurns = Math.min(turns/2, 10);
+                for(let j=0; j < visualTurns; j++) {
+                    sCtx.beginPath(); sCtx.ellipse(0, 0, 25 + j*1.5, mouseR, 0, 0, Math.PI*2); sCtx.stroke();
+                }
+                sCtx.beginPath(); sCtx.moveTo(25, 0); sCtx.lineTo(100, 50); sCtx.stroke();
+                sCtx.restore();
+                sCtx.fillStyle = isLocked ? "#ffd700" : "#b87333";
+                sCtx.fillText(`r = ${mouseR.toFixed(0)}`, cx + 45, cy - mouseR - 5);
+            }
+
+            // 示波器绘制
+            waveHistory.push({ id: displayId, h: displayH });
+            if (waveHistory.length > maxHistory) waveHistory.shift();
+
+            const padding = { left: 60, right: 30, top: 30, bottom: 30 };
+            const plotW = wCanvas.width - padding.left - padding.right;
+            const plotH = wCanvas.height - padding.top - padding.bottom;
+            const centerY = padding.top + plotH / 2;
+
+            wCtx.fillStyle = "#000"; wCtx.fillRect(0, 0, wCanvas.width, wCanvas.height);
+
+            const displayLimit = Math.ceil(yAxisRange / 10) * 10;
+            const yScale = (plotH / 2) / displayLimit;
+
+            wCtx.strokeStyle = "#475569"; wCtx.lineWidth = 1;
+            wCtx.beginPath();
+            wCtx.moveTo(padding.left, padding.top); wCtx.lineTo(padding.left, padding.top + plotH);
+            wCtx.moveTo(padding.left, centerY); wCtx.lineTo(padding.left + plotW, centerY);
+            wCtx.stroke();
+
+            wCtx.textAlign = "right"; wCtx.textBaseline = "middle"; wCtx.fillStyle = "#94a3b8";
+            wCtx.font = "10px monospace";
+            
+            for (let i = -4; i <= 4; i++) {
+                const val = (displayLimit / 4) * i;
+                const yPos = centerY - (val * yScale);
+                wCtx.fillText(val.toFixed(0), padding.left - 8, yPos);
+                wCtx.save();
+                wCtx.strokeStyle = "#1e293b"; 
+                wCtx.setLineDash([2, 4]);
+                wCtx.beginPath(); wCtx.moveTo(padding.left, yPos); wCtx.lineTo(padding.left + plotW, yPos); wCtx.stroke();
+                wCtx.restore();
+            }
+
+            const drawWaveMatlab = (key, color, glow) => {
+                wCtx.beginPath(); wCtx.strokeStyle = color; wCtx.lineWidth = 3;
+                wCtx.shadowBlur = 10; wCtx.shadowColor = glow;
+                waveHistory.forEach((pt, i) => {
+                    const x = padding.left + (i / maxHistory) * plotW;
+                    const y = centerY - (pt[key] * yScale);
+                    if (y < padding.top || y > padding.top + plotH) return; 
+                    if(i === 0) wCtx.moveTo(x, y); else wCtx.lineTo(x, y);
+                });
+                wCtx.stroke(); wCtx.shadowBlur = 0;
+            };
+
+            drawWaveMatlab('id', '#ff3e3e', '#ff0000');
+            drawWaveMatlab('h', '#39ff14', '#00ff00');
+        }
+        requestAnimationFrame(draw);
+    }
+
+    function drawPhysArrow(ctx, x1, y1, x2, y2, forward) {
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        const head = 8, tx = forward ? x2 : x1, s = forward ? 1 : -1;
+        ctx.beginPath(); ctx.moveTo(tx, y1);
+        ctx.lineTo(tx - s*head, y1-5); ctx.lineTo(tx - s*head, y1+5); ctx.fill();
+    }
+
+    // 初始化：确保 MathJax 就绪后再更新
+    window.onload = () => {
+        updateFormula();
+        if(window.MathJax) {
+            MathJax.startup.promise.then(() => {
+                MathJax.typesetPromise();
+            });
+        }
+    };
+    draw();
+</script>
+</body>
+</html>

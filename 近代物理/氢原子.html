@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>氢原子电子云轨道模拟 (n, l, m)</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body { background-color: #050505; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .main-container { display: flex; gap: 30px; align-items: flex-start; }
+        .canvas-box { position: relative; border: 1px solid #333; background: #000; box-shadow: 0 0 30px rgba(100, 50, 255, 0.2); }
+        .controls { width: 320px; background: #1a1a1a; padding: 25px; border-radius: 12px; }
+        .slider-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #a29bfe; font-weight: bold; }
+        input[type="range"] { width: 100%; accent-color: #6c5ce7; cursor: pointer; }
+        .info-panel { font-size: 0.85em; color: #888; line-height: 1.6; border-top: 1px solid #333; pt: 15px; }
+        .math-header { text-align: center; color: #a29bfe; margin-bottom: 20px; }
+        button { width: 100%; padding: 12px; background: #6c5ce7; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 10px; }
+        button:hover { background: #8271ff; }
+    </style>
+</head>
+<body>
+
+    <div class="math-header">
+        <h2>氢原子波函数可视化 (\(\psi_{n,l,m}\))</h2>
+        <div id="formula-display">$$\psi_{n,l,m}(r, \theta, \phi) = R_{n,l}(r) Y_{l,m}(\theta, \phi)$$</div>
+    </div>
+
+    <div class="main-container">
+        <div class="canvas-box">
+            <canvas id="orbitalCanvas" width="600" height="600"></canvas>
+            <div style="position:absolute; bottom:10px; right:10px; color:#444; font-size:12px;">X-Z 平面剖面图</div>
+        </div>
+
+        <div class="controls">
+            <div class="slider-group">
+                <label id="nLabel">主量子数 (n): 1</label>
+                <input type="range" id="nVal" min="1" max="4" value="1">
+            </div>
+            <div class="slider-group">
+                <label id="lLabel">角量子数 (l): 0</label>
+                <input type="range" id="lVal" min="0" max="0" value="0">
+            </div>
+            <div class="slider-group">
+                <label id="mLabel">磁量子数 (m): 0</label>
+                <input type="range" id="mVal" min="0" max="0" value="0">
+            </div>
+
+            <button id="clearBtn">清除并重新累积</button>
+
+            <div class="info-panel">
+                <strong>物理说明：</strong><br>
+                1. <b>亮度</b>代表电子出现的概率密度 \(|\psi|^2\)。<br>
+                2. <b>节点 (黑色区域)</b>是波函数相干相消的结果。<br>
+                3. 当 \(n\) 增大时，由于<b>测不准关系</b>，电子云向外扩散。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('orbitalCanvas');
+        const ctx = canvas.getContext('2d');
+        const nInput = document.getElementById('nVal'), lInput = document.getElementById('lVal'), mInput = document.getElementById('mVal');
+        const clearBtn = document.getElementById('clearBtn');
+
+        let points = [];
+        const scale = 40; // 绘图缩放因子
+
+        // 阶乘函数
+        const fact = (num) => (num <= 1 ? 1 : num * fact(num - 1));
+        
+        // 关联拉盖尔多项式 (简化版用于模拟 n=1-4)
+        function assocLaguerre(n, l, x) {
+            if (n === 1) return 1;
+            if (n === 2) return l === 0 ? 2 - x : 1;
+            if (n === 3) {
+                if (l === 0) return 6 - 6*x + x*x;
+                if (l === 1) return 4 - x;
+                return 1;
+            }
+            if (n === 4) {
+                if (l === 0) return 24 - 36*x + 12*x*x - Math.pow(x,3)/1; // 近似
+                return 1;
+            }
+            return 1;
+        }
+
+        // 关联勒让德多项式 (用于角向分布)
+        function assocLegendre(l, m, x) {
+            m = Math.abs(m);
+            if (l === 0) return 1;
+            if (l === 1) return m === 0 ? x : Math.sqrt(1 - x * x);
+            if (l === 2) {
+                if (m === 0) return 0.5 * (3 * x * x - 1);
+                if (m === 1) return 3 * x * Math.sqrt(1 - x * x);
+                return 3 * (1 - x * x);
+            }
+            if (l === 3) {
+                if (m === 0) return 0.5 * (5 * Math.pow(x,3) - 3*x);
+                return Math.sqrt(1 - x * x);
+            }
+            return 1;
+        }
+
+        // 计算波函数强度 |psi|^2
+        function getIntensity(r, theta, n, l, m) {
+            const rho = (2 * r) / n;
+            // 径向部分 R(r)
+            const R = Math.pow(rho, l) * Math.exp(-rho / 2) * assocLaguerre(n, l, rho);
+            // 角向部分 Y(theta)
+            const Y = assocLegendre(l, m, Math.cos(theta));
+            return R * R * Y * Y;
+        }
+
+        function updateInputs() {
+            const n = parseInt(nInput.value);
+            lInput.max = n - 1;
+            const l = Math.min(parseInt(lInput.value), lInput.max);
+            lInput.value = l;
+            
+            mInput.min = -l;
+            mInput.max = l;
+            const m = Math.max(mInput.min, Math.min(parseInt(mInput.value), l));
+            mInput.value = m;
+
+            document.getElementById('nLabel').innerText = `主量子数 (n): ${n}`;
+            document.getElementById('lLabel').innerText = `角量子数 (l): ${l}`;
+            document.getElementById('mLabel').innerText = `磁量子数 (m): ${m}`;
+        }
+
+        function draw() {
+            // 每帧采样点数
+            const n = parseInt(nInput.value), l = parseInt(lInput.value), m = parseInt(mInput.value);
+            
+            for (let i = 0; i < 500; i++) {
+                // 在坐标系内随机采样
+                const rx = (Math.random() - 0.5) * 30 * n;
+                const rz = (Math.random() - 0.5) * 30 * n;
+                
+                const r = Math.sqrt(rx*rx + rz*rz);
+                const theta = Math.atan2(rx, rz);
+                
+                const prob = getIntensity(r, theta, n, l, m);
+                
+                // 蒙特卡洛接受-拒绝采样
+                if (Math.random() * 0.5 < prob) {
+                    points.push({
+                        x: canvas.width / 2 + rx * (scale / n * 1.5),
+                        y: canvas.height / 2 + rz * (scale / n * 1.5),
+                        alpha: 0.6
+                    });
+                }
+            }
+
+            // 绘制
+            ctx.fillStyle = 'rgba(0,0,0,0.1)';
+            ctx.fillRect(0,0,canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#a29bfe';
+            points.forEach(p => {
+                ctx.globalAlpha = p.alpha;
+                ctx.fillRect(p.x, p.y, 1.5, 1.5);
+            });
+            
+            // 限制点数防止卡顿
+            if (points.length > 15000) points.splice(0, 1000);
+            requestAnimationFrame(draw);
+        }
+
+        [nInput, lInput, mInput].forEach(el => el.oninput = () => {
+            updateInputs();
+            points = [];
+            ctx.clearRect(0,0,canvas.width, canvas.height);
+        });
+
+        clearBtn.onclick = () => { points = []; ctx.clearRect(0,0,canvas.width, canvas.height); };
+
+        updateInputs();
+        draw();
+    </script>
+</body>
+</html>

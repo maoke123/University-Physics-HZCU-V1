@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>静电场环路定理 - 仪表盘教学版</title>
+    <style>
+        /* 全局重置与布局 */
+        body { 
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; 
+            background: #eef2f5; 
+            margin: 0; 
+            padding: 20px; 
+            height: 100vh; 
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* 禁止出现滚动条 */
+        }
+
+        h2 { 
+            text-align: center; 
+            margin: 0 0 15px 0; 
+            color: #2c3e50; 
+            font-size: 22px;
+        }
+
+        /* 主容器：使用Flex布局实现左右分栏 */
+        .dashboard {
+            display: flex;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            flex: 1; /* 填满剩余高度 */
+            align-items: flex-start;
+        }
+
+        /* 左侧面板：轨迹演示 */
+        .left-panel {
+            flex: 0 0 auto; /* 固定宽度 */
+            background: white;
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 右侧面板：数据与控制 */
+        .right-panel {
+            flex: 1; /* 占据剩余宽度 */
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-width: 400px;
+        }
+
+        /* 右侧内部卡片样式 */
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+
+        canvas { 
+            background: #fafafa; 
+            border-radius: 4px; 
+            display: block; 
+        }
+
+        /* 统计数据样式 */
+        .stat-row { 
+            display: flex; 
+            justify-content: space-between; 
+            margin-bottom: 8px; 
+            font-size: 14px; 
+            color: #555;
+        }
+        .stat-row:last-child { margin-bottom: 0; }
+        
+        .val { font-family: Consolas, monospace; font-weight: bold; font-size: 16px; }
+        .green { color: #28a745; }
+        .red { color: #dc3545; }
+        .blue { color: #007bff; }
+        
+        /* 控件样式 */
+        input[type=range] { width: 100%; cursor: pointer; margin: 10px 0; }
+        
+        button { 
+            width: 100%; 
+            padding: 12px; 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            border-radius: 6px; 
+            font-size: 15px; 
+            cursor: pointer; 
+            transition: 0.2s;
+        }
+        button:hover { background: #0056b3; }
+
+        .hint { font-size: 12px; color: #888; text-align: center; margin-top: 5px; }
+
+    </style>
+</head>
+<body>
+
+    <h2>∮ E·dl = 0 静电场环路定理演示</h2>
+
+    <div class="dashboard">
+        <div class="left-panel">
+            <canvas id="simCanvas" width="480" height="480"></canvas>
+        </div>
+
+        <div class="right-panel">
+            
+            <div class="card">
+                <div style="font-size:14px; font-weight:bold; color:#444; margin-bottom:5px;">做功分布图 (面积积累):</div>
+                <canvas id="graphCanvas" width="450" height="120" style="width:100%"></canvas>
+                <div class="hint">绿色面积(正功) 与 红色面积(负功) 将相互抵消</div>
+            </div>
+
+            <div class="card">
+                <div class="stat-row">
+                    <span>正功累积 (绿):</span>
+                    <span id="posArea" class="val green">+0.00</span>
+                </div>
+                <div class="stat-row">
+                    <span>负功累积 (红):</span>
+                    <span id="negArea" class="val red">0.00</span>
+                </div>
+                <div style="border-top:1px solid #eee; margin:10px 0;"></div>
+                <div class="stat-row">
+                    <span style="font-weight:bold; color:#333;">当前净总功:</span>
+                    <span id="netWork" class="val blue">0.00</span>
+                </div>
+            </div>
+
+            <div class="card" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+                <label style="font-weight:bold; display:block; margin-bottom:5px;">拖动滑块演示积分过程:</label>
+                <input type="range" id="slider" min="0" max="1000" value="0">
+                <div style="display:flex; justify-content:space-between; font-size:12px; color:#999;">
+                    <span>起点</span>
+                    <span>回到起点</span>
+                </div>
+                
+                <button onclick="init()">生成新的随机回路</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const sCanvas = document.getElementById('simCanvas');
+        const sCtx = sCanvas.getContext('2d');
+        const gCanvas = document.getElementById('graphCanvas');
+        const gCtx = gCanvas.getContext('2d');
+        
+        // 画布中心坐标 (480/2)
+        const cx = 240, cy = 240;
+        
+        let points = [];
+        let maxW = 0;
+        let pathSeeds = [0,0,0];
+        const STEPS = 1000;
+
+        function init() {
+            pathSeeds = [Math.random()*10, Math.random()*10, Math.random()*10];
+            generatePhysicsData();
+            document.getElementById('slider').value = 0;
+            draw(0);
+        }
+
+        function getR(theta) {
+            let r = 120; // 稍微调小半径以适应480的画布
+            r += 30 * Math.sin(2*theta + pathSeeds[0]); 
+            r += 20 * Math.cos(3*theta + pathSeeds[1]); 
+            r += 10 * Math.sin(5*theta + pathSeeds[2]);
+            return r;
+        }
+
+        function generatePhysicsData() {
+            points = [];
+            let rawDWs = [];
+            let rawSum = 0;
+
+            for(let i=0; i<=STEPS; i++) {
+                let theta = (i/STEPS) * Math.PI * 2;
+                let r = getR(theta);
+                let x = cx + r * Math.cos(theta);
+                let y = cy + r * Math.sin(theta);
+                
+                if (i < STEPS) {
+                    let theta2 = ((i+1)/STEPS) * Math.PI * 2;
+                    let r2 = getR(theta2);
+                    let x2 = cx + r2 * Math.cos(theta2);
+                    let y2 = cy + r2 * Math.sin(theta2);
+                    let dx = x2 - x; let dy = y2 - y;
+                    let dist = Math.sqrt((x-cx)**2 + (y-cy)**2);
+                    
+                    let Emag = 40000 / (dist*dist); // 调整力系数
+                    let Ex = Emag * (x-cx)/dist; 
+                    let Ey = Emag * (y-cy)/dist;
+                    let dW = Ex*dx + Ey*dy;
+                    
+                    rawDWs.push(dW);
+                    rawSum += dW;
+                }
+                points.push({x, y});
+            }
+
+            // 误差平摊修正
+            let correction = -rawSum / STEPS;
+            let currentTotal = 0;
+            maxW = 0;
+
+            for(let i=0; i<STEPS; i++) {
+                let correctedDW = rawDWs[i] + correction;
+                if (Math.abs(correctedDW) > maxW) maxW = Math.abs(correctedDW);
+                currentTotal += correctedDW;
+                
+                points[i].dw = correctedDW;
+                points[i].total = currentTotal;
+            }
+            points[STEPS-1].total = 0; 
+        }
+
+        function updateUIText(pos, neg, net) {
+            document.getElementById('posArea').innerText = "+" + pos.toFixed(1);
+            document.getElementById('negArea').innerText = neg.toFixed(1);
+            let netStr = Math.abs(net) < 0.005 ? "0.00" : net.toFixed(2);
+            document.getElementById('netWork').innerText = netStr;
+        }
+
+        function draw(idx) {
+            idx = parseInt(idx);
+            
+            // 实时计算当前累积面积
+            let currentPosSum = 0;
+            let currentNegSum = 0;
+            let currentNetWork = 0;
+
+            if (idx > 0) {
+                for(let i=0; i < idx; i++) {
+                    let dw = points[i].dw;
+                    if(dw > 0) currentPosSum += dw;
+                    else currentNegSum += dw;
+                }
+                currentNetWork = points[idx-1].total;
+            }
+            updateUIText(currentPosSum, currentNegSum, currentNetWork);
+
+            // --- 绘图 ---
+            
+            // 1. 左侧：轨迹
+            sCtx.clearRect(0, 0, sCanvas.width, sCanvas.height);
+            // 场线
+            sCtx.strokeStyle = "rgba(0,123,255,0.1)";
+            for(let i=0; i<16; i++){
+                sCtx.beginPath(); sCtx.moveTo(cx, cy);
+                let a = i*Math.PI/8;
+                sCtx.lineTo(cx+350*Math.cos(a), cy+350*Math.sin(a));
+                sCtx.stroke();
+            }
+            // 虚线底图
+            sCtx.beginPath();
+            points.forEach((p, i) => i==0 ? sCtx.moveTo(p.x, p.y) : sCtx.lineTo(p.x, p.y));
+            sCtx.strokeStyle = "#ddd"; sCtx.setLineDash([4,4]); sCtx.stroke(); sCtx.setLineDash([]);
+            
+            // 彩色进度
+            for(let i=0; i<idx; i++){
+                sCtx.beginPath(); sCtx.moveTo(points[i].x, points[i].y); sCtx.lineTo(points[i+1].x, points[i+1].y);
+                sCtx.strokeStyle = points[i].dw > 0 ? "#28a745" : "#dc3545";
+                sCtx.lineWidth = 4; sCtx.stroke();
+            }
+            
+            // 粒子
+            drawBall(sCtx, cx, cy, 14, "blue", "+Q");
+            if(idx <= STEPS) drawBall(sCtx, points[idx].x, points[idx].y, 8, "orange", null);
+
+            // 2. 右侧：波形图
+            gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
+            let mid = gCanvas.height / 2;
+            let wStep = gCanvas.width / STEPS;
+            let scaleY = (mid - 10) / (maxW * 1.1); 
+
+            // 波形背景
+            for(let i=0; i<STEPS; i++){
+                let h = points[i].dw * scaleY;
+                gCtx.fillStyle = points[i].dw > 0 ? "rgba(40, 167, 69, 0.2)" : "rgba(220, 53, 69, 0.2)";
+                gCtx.fillRect(i*wStep, mid, wStep+0.6, -h);
+            }
+            // 波形进度
+            for(let i=0; i<idx; i++){
+                let h = points[i].dw * scaleY;
+                gCtx.fillStyle = points[i].dw > 0 ? "rgba(40, 167, 69, 1)" : "rgba(220, 53, 69, 1)";
+                gCtx.fillRect(i*wStep, mid, wStep+0.6, -h);
+            }
+            // 轴线
+            gCtx.beginPath(); gCtx.moveTo(0, mid); gCtx.lineTo(gCanvas.width, mid); gCtx.strokeStyle="#ccc"; gCtx.stroke();
+            gCtx.beginPath(); gCtx.moveTo(idx*wStep, 0); gCtx.lineTo(idx*wStep, gCanvas.height); gCtx.strokeStyle="#333"; gCtx.lineWidth=2; gCtx.stroke();
+        }
+
+        function drawBall(ctx, x, y, r, color, Text) {
+            ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2);
+            ctx.fillStyle=color; ctx.fill();
+            if(Text) { ctx.fillStyle="white"; ctx.font="bold 14px Arial"; ctx.fillText(Text, x-9, y+5); }
+        }
+
+        document.getElementById('slider').addEventListener('input', e => draw(e.target.value));
+        window.addEventListener('resize', () => init()); // 简单防错
+        
+        init();
+    </script>
+</body>
+</html>

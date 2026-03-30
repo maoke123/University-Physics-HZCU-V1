@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>机械波综合演示实验室</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h2 { color: #2c3e50; margin-bottom: 20px; }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .tab-btn {
+            padding: 10px 20px;
+            border: 1px solid #dcdfe6;
+            background: #fff;
+            border-radius: 6px 6px 0 0;
+            cursor: pointer;
+            font-size: 16px;
+            color: #606266;
+            transition: 0.2s;
+        }
+        .tab-btn.active {
+            background: #409eff;
+            color: white;
+            border-color: #409eff;
+        }
+        #canvas-container {
+            border: 1px solid #dcdfe6;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: grab;
+            margin-bottom: 20px;
+        }
+        #canvas-container:active { cursor: grabbing; }
+        canvas { display: block; }
+        
+        .controls-container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            width: 800px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        /* 控制面板切换逻辑 */
+        .control-panel { display: none; flex-direction: column; gap: 15px; }
+        .control-panel.active { display: flex; }
+        
+        .control-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        /* 干涉模块的分组框 */
+        .wave-box {
+            border: 1px solid #ebeef5;
+            padding: 15px;
+            border-radius: 8px;
+            background: #fafafa;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            position: relative;
+            margin-top: 10px;
+        }
+        .wave-box-title {
+            position: absolute;
+            top: -10px; left: 15px;
+            background: #fff;
+            padding: 0 5px;
+            font-size: 12px; font-weight: bold;
+            border: 1px solid #ebeef5; border-radius: 4px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            align-items: center;
+        }
+        .control-group label { font-size: 13px; color: #606266; }
+        /* 使用你截图中的青色风格基础色 */
+        input[type="range"] { width: 100px; accent-color: #20b2aa; }
+        
+        .global-btns {
+            display: flex; gap: 10px; justify-content: center; margin-top: 10px;
+        }
+        button.action-btn {
+            padding: 8px 16px; background-color: #67c23a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;
+        }
+        button.action-btn.reset { background-color: #f56c6c; }
+        button.action-btn:hover { opacity: 0.8; }
+        
+        #formula-container {
+            margin-top: 5px; padding: 15px; background: #f8f9fa; border-radius: 6px; border-left: 4px solid #409eff;
+            font-size: 1.1em; color: #303133; min-height: 40px; text-align: center; overflow-x: auto;
+        }
+        .legend { font-size: 13px; color: #909399; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <h2>机械波综合演示实验室</h2>
+    
+    <div class="tabs">
+        <button class="tab-btn active" data-mode="single">1. 传播与形成</button>
+        <button class="tab-btn" data-mode="interference">2. 波的干涉</button>
+        <button class="tab-btn" data-mode="standing">3. 驻波形成</button>
+        <button class="tab-btn" data-mode="doppler">4. 多普勒效应</button>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="waveCanvas" width="800" height="400"></canvas>
+    </div>
+
+    <div class="controls-container">
+        
+        <div id="panel-single" class="control-panel active">
+            <div class="control-row">
+                <div class="control-group"><label>振幅 A (m)</label><input type="range" id="s-amp" min="10" max="80" value="48"></div>
+                <div class="control-group"><label>波长 λ (m)</label><input type="range" id="s-lam" min="50" max="300" value="150"></div>
+                <div class="control-group"><label>周期 T (s)</label><input type="range" id="s-T" min="0.5" max="5" value="2" step="0.1"></div>
+            </div>
+        </div>
+
+        <div id="panel-interference" class="control-panel">
+            <div class="wave-box">
+                <div class="wave-box-title" style="color:#409eff;">波 1 (蓝虚线)</div>
+                <div class="control-group"><label>振幅 A₁</label><input type="range" id="i-amp1" min="10" max="60" value="40"></div>
+                <div class="control-group"><label>波长 λ₁</label><input type="range" id="i-lam1" min="50" max="300" value="150"></div>
+                <div class="control-group"><label>周期 T₁</label><input type="range" id="i-t1" min="0.5" max="5" value="2" step="0.1"></div>
+            </div>
+            <div class="wave-box">
+                <div class="wave-box-title" style="color:#67c23a;">波 2 (绿虚线)</div>
+                <div class="control-group"><label>振幅 A₂</label><input type="range" id="i-amp2" min="10" max="60" value="40"></div>
+                <div class="control-group"><label>波长 λ₂</label><input type="range" id="i-lam2" min="50" max="300" value="150"></div>
+                <div class="control-group"><label>周期 T₂</label><input type="range" id="i-t2" min="0.5" max="5" value="2" step="0.1"></div>
+                <div class="control-group"><label>初相差 Δφ</label><input type="range" id="i-phase" min="0" max="6.28" value="0" step="0.1"></div>
+            </div>
+        </div>
+
+        <div id="panel-standing" class="control-panel">
+            <div class="control-row">
+                <div class="control-group"><label>振幅 A (m)</label><input type="range" id="st-amp" min="10" max="60" value="30"></div>
+                <div class="control-group"><label>波长 λ (m)</label><input type="range" id="st-lam" min="50" max="300" value="150"></div>
+                <div class="control-group"><label>周期 T (s)</label><input type="range" id="st-T" min="0.5" max="5" value="2" step="0.1"></div>
+            </div>
+        </div>
+
+        <div id="panel-doppler" class="control-panel">
+            <div class="control-row">
+                <div class="control-group"><label>波源速度 v_s</label><input type="range" id="d-vs" min="0" max="80" value="30"></div>
+                <div class="control-group"><label>介质波速 u</label><input type="range" id="d-u" min="50" max="200" value="100"></div>
+                <div class="control-group"><label>发射周期 T</label><input type="range" id="d-T" min="0.2" max="2" value="0.5" step="0.1"></div>
+            </div>
+        </div>
+
+        <div class="global-btns">
+            <button id="playBtn" class="action-btn">暂停 / 继续</button>
+            <button id="resetBtn" class="action-btn reset">重置时间 t=0</button>
+        </div>
+        
+        <div id="formula-container">加载公式中...</div>
+        <div class="legend" id="legend-text">拖拽画布平移，滚轮缩放 | 蓝线：连续波形 | 绿点：介质质点</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+        const formulaContainer = document.getElementById('formula-container');
+        const legendText = document.getElementById('legend-text');
+
+        // 系统状态
+        let currentMode = 'single';
+        let t = 0;
+        let isPlaying = true;
+        let lastTime = performance.now();
+        
+        // 视图变换
+        let scale = 1;
+        let offsetX = 50; 
+        let offsetY = canvas.height / 2; 
+        let isDragging = false;
+        let lastMouseX = 0, lastMouseY = 0;
+
+        // 全局物理参数绑定 (利用 Getter 实时获取 HTML input 的值，避免状态不同步)
+        const getVal = (id) => parseFloat(document.getElementById(id).value);
+
+        let wavefronts = []; // 多普勒使用
+
+        // 标签页切换逻辑
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                // 1. 切换按钮高亮
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                
+                // 2. 切换控制面板显示
+                currentMode = e.target.getAttribute('data-mode');
+                document.querySelectorAll('.control-panel').forEach(p => p.classList.remove('active'));
+                document.getElementById('panel-' + currentMode).classList.add('active');
+                
+                // 3. 视角复位
+                offsetX = currentMode === 'doppler' ? canvas.width/2 : 50;
+                offsetY = canvas.height / 2;
+                scale = 1; t = 0; wavefronts = [];
+                
+                // 4. 更新图例说明
+                if (currentMode === 'single') legendText.innerText = "蓝线：连续波形 | 绿点：介质质点";
+                if (currentMode === 'interference') legendText.innerText = "蓝虚线：波1 | 绿虚线：波2 | 红实线：干涉合成波 (y = y1 + y2)";
+                if (currentMode === 'standing') legendText.innerText = "虚线：入射与反射波 | 红实线：合成驻波 | 蓝点：静止的波节";
+                if (currentMode === 'doppler') legendText.innerText = "多普勒效应：波源运动导致波前被压缩/拉长";
+                
+                updateFormula();
+            });
+        });
+
+        // 绑定所有 input 触发公式更新
+        document.querySelectorAll('input[type="range"]').forEach(input => {
+            input.addEventListener('input', updateFormula);
+        });
+
+        // 按钮事件
+        document.getElementById('playBtn').addEventListener('click', () => isPlaying = !isPlaying);
+        document.getElementById('resetBtn').addEventListener('click', () => { t = 0; wavefronts = []; });
+
+        // 画布交互：缩放与平移
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoom = e.deltaY > 0 ? 0.9 : 1.1;
+            offsetX = e.offsetX - (e.offsetX - offsetX) * zoom;
+            offsetY = e.offsetY - (e.offsetY - offsetY) * zoom;
+            scale = Math.max(0.1, scale * zoom);
+        });
+        canvas.addEventListener('mousedown', (e) => { isDragging = true; lastMouseX = e.offsetX; lastMouseY = e.offsetY; });
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            offsetX += e.offsetX - lastMouseX;
+            offsetY += e.offsetY - lastMouseY;
+            lastMouseX = e.offsetX;
+            lastMouseY = e.offsetY;
+        });
+        window.addEventListener('mouseup', () => isDragging = false);
+
+        // 公式渲染
+        function updateFormula() {
+            let latexStr = '';
+            
+            if (currentMode === 'single') {
+                const A = getVal('s-amp').toFixed(1);
+                const o = (2 * Math.PI / getVal('s-T')).toFixed(2);
+                const k = (2 * Math.PI / getVal('s-lam')).toFixed(2);
+                latexStr = `y = ${A} \\cos(${o}t - ${k}x)`;
+            } 
+            else if (currentMode === 'interference') {
+                const A1 = getVal('i-amp1').toFixed(1), o1 = (2 * Math.PI / getVal('i-t1')).toFixed(2), k1 = (2 * Math.PI / getVal('i-lam1')).toFixed(2);
+                const A2 = getVal('i-amp2').toFixed(1), o2 = (2 * Math.PI / getVal('i-t2')).toFixed(2), k2 = (2 * Math.PI / getVal('i-lam2')).toFixed(2);
+                const phi = getVal('i-phase').toFixed(2);
+                
+                latexStr = `\\begin{aligned} y_1 &= ${A1} \\cos(${o1}t - ${k1}x) \\\\ y_2 &= ${A2} \\cos(${o2}t - ${k2}x + ${phi}) \\end{aligned} \\quad \\Rightarrow y_{合成} = y_1 + y_2`;
+            } 
+            else if (currentMode === 'standing') {
+                const A = getVal('st-amp').toFixed(1), o = (2 * Math.PI / getVal('st-T')).toFixed(2), k = (2 * Math.PI / getVal('st-lam')).toFixed(2);
+                latexStr = `y_1 = ${A} \\cos(${o}t - ${k}x), \\; y_2 = ${A} \\cos(${o}t + ${k}x) \\; \\Rightarrow y = ${2*A} \\cos(${k}x) \\cos(${o}t)`;
+            } 
+            else if (currentMode === 'doppler') {
+                const u = getVal('d-u'), vs = getVal('d-vs'), T = getVal('d-T');
+                const lamPrime = ((u - vs) * T).toFixed(1);
+                latexStr = `\\lambda' = (u - v_s)T = (${u} - ${vs}) \\times ${T} = ${lamPrime} \\text{ m}`;
+            }
+
+            try {
+                if (typeof katex !== 'undefined') katex.render(latexStr, formulaContainer, { throwOnError: false, displayMode: true });
+                else formulaContainer.innerText = latexStr;
+            } catch (err) { formulaContainer.innerText = latexStr; }
+        }
+
+        function drawAxes() {
+            ctx.beginPath(); ctx.strokeStyle = '#909399'; ctx.lineWidth = 1 / scale;
+            ctx.moveTo(-offsetX / scale, 0); ctx.lineTo((canvas.width - offsetX) / scale, 0);
+            ctx.moveTo(0, -offsetY / scale); ctx.lineTo(0, (canvas.height - offsetY) / scale);
+            ctx.stroke();
+        }
+
+        // --- 核心绘制 ---
+
+        function drawSingle() {
+            const A = getVal('s-amp'), lam = getVal('s-lam'), T = getVal('s-T');
+            const v = lam / T; const wavefrontX = v * t; 
+            
+            ctx.beginPath(); ctx.strokeStyle = '#409eff'; ctx.lineWidth = 2 / scale;
+            for (let x = 0; x <= (canvas.width - offsetX) / scale; x += 2 / scale) {
+                let y = x <= wavefrontX ? -A * Math.cos(2 * Math.PI * (t/T - x/lam)) : 0;
+                x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            for (let i = 0; i < 30; i++) {
+                const x = i * (lam / 12);
+                let y = x <= wavefrontX ? -A * Math.cos(2 * Math.PI * (t/T - x/lam)) : 0;
+                ctx.beginPath(); ctx.strokeStyle = 'rgba(200, 200, 200, 0.5)'; ctx.lineWidth = 1/scale;
+                ctx.moveTo(x, 0); ctx.lineTo(x, y); ctx.stroke();
+                ctx.beginPath(); ctx.arc(x, y, 4/scale, 0, Math.PI*2);
+                ctx.fillStyle = i === 0 ? '#f56c6c' : '#67c23a'; ctx.fill();
+            }
+        }
+
+        function drawInterference() {
+            const A1 = getVal('i-amp1'), lam1 = getVal('i-lam1'), T1 = getVal('i-t1');
+            const A2 = getVal('i-amp2'), lam2 = getVal('i-lam2'), T2 = getVal('i-t2'), phase = getVal('i-phase');
+            const limit = (canvas.width - offsetX) / scale;
+            
+            // 绘制波 1
+            ctx.setLineDash([5/scale, 5/scale]); ctx.lineWidth = 1.5 / scale;
+            ctx.beginPath(); ctx.strokeStyle = '#409eff';
+            for(let x=0; x<=limit; x+=2/scale) {
+                let y1 = -A1 * Math.cos(2 * Math.PI * (t/T1 - x/lam1));
+                x===0 ? ctx.moveTo(x,y1) : ctx.lineTo(x,y1);
+            }
+            ctx.stroke();
+
+            // 绘制波 2
+            ctx.beginPath(); ctx.strokeStyle = '#67c23a';
+            for(let x=0; x<=limit; x+=2/scale) {
+                let y2 = -A2 * Math.cos(2 * Math.PI * (t/T2 - x/lam2) + phase);
+                x===0 ? ctx.moveTo(x,y2) : ctx.lineTo(x,y2);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]); 
+
+            // 绘制合成波 (红色)
+            ctx.beginPath(); ctx.strokeStyle = '#f56c6c'; ctx.lineWidth = 2.5 / scale;
+            for(let x=0; x<=limit; x+=2/scale) {
+                let y = -A1 * Math.cos(2 * Math.PI * (t/T1 - x/lam1)) - A2 * Math.cos(2 * Math.PI * (t/T2 - x/lam2) + phase);
+                x===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+            }
+            ctx.stroke();
+        }
+
+        function drawStanding() {
+            const A = getVal('st-amp'), lam = getVal('st-lam'), T = getVal('st-T');
+            const limit = (canvas.width - offsetX) / scale;
+
+            ctx.setLineDash([4/scale, 4/scale]); ctx.lineWidth = 1 / scale;
+            ctx.beginPath(); ctx.strokeStyle = 'rgba(64, 158, 255, 0.6)';
+            for(let x=0; x<=limit; x+=2/scale) {
+                let y_in = -A * Math.cos(2 * Math.PI * (t/T - x/lam)); x===0 ? ctx.moveTo(x,y_in) : ctx.lineTo(x,y_in);
+            } ctx.stroke();
+
+            ctx.beginPath(); ctx.strokeStyle = 'rgba(103, 194, 58, 0.6)';
+            for(let x=0; x<=limit; x+=2/scale) {
+                let y_ref = -A * Math.cos(2 * Math.PI * (t/T + x/lam)); x===0 ? ctx.moveTo(x,y_ref) : ctx.lineTo(x,y_ref);
+            } ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.beginPath(); ctx.strokeStyle = '#f56c6c'; ctx.lineWidth = 2.5 / scale;
+            for(let x=0; x<=limit; x+=2/scale) {
+                let y = -2 * A * Math.cos(2*Math.PI * x/lam) * Math.cos(2*Math.PI * t/T);
+                x===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+            } ctx.stroke();
+
+            ctx.fillStyle = '#409eff';
+            for(let k=0; k<10; k++) {
+                let nodeX = (2*k + 1) * lam / 4;
+                if(nodeX > limit) break;
+                ctx.beginPath(); ctx.arc(nodeX, 0, 5/scale, 0, Math.PI*2); ctx.fill();
+            }
+        }
+
+        function drawDoppler() {
+            const vs = getVal('d-vs'), u = getVal('d-u'), T = getVal('d-T');
+            if (wavefronts.length === 0 || (t - wavefronts[wavefronts.length-1].time) >= T) {
+                wavefronts.push({ time: t, x: vs * t });
+            }
+            
+            ctx.lineWidth = 1.5 / scale;
+            for (let wf of wavefronts) {
+                const radius = u * (t - wf.time);
+                if (radius > 1500) continue; 
+                ctx.beginPath(); ctx.arc(wf.x, 0, radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(64, 158, 255, ${Math.max(0, 1 - radius/1000)})`;
+                ctx.stroke();
+            }
+
+            ctx.beginPath(); ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 1/scale;
+            ctx.moveTo(-offsetX/scale, 0); ctx.lineTo((canvas.width-offsetX)/scale, 0); ctx.stroke();
+
+            ctx.beginPath(); ctx.arc(vs * t, 0, 6/scale, 0, Math.PI * 2); ctx.fillStyle = '#f56c6c'; ctx.fill();
+        }
+
+        function draw() {
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+            
+            if (isPlaying) { t += deltaTime; }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+            drawAxes();
+
+            if (currentMode === 'single') drawSingle();
+            else if (currentMode === 'interference') drawInterference();
+            else if (currentMode === 'standing') drawStanding();
+            else if (currentMode === 'doppler') drawDoppler();
+
+            ctx.restore();
+            requestAnimationFrame(draw);
+        }
+
+        // 初始化
+        updateFormula();
+        requestAnimationFrame(draw);
+    </script>
+</body>
+</html>

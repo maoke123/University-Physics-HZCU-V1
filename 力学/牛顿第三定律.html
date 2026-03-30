@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>物理力学：单次击打定量实验</title>
+    <style>
+        body { display: flex; align-items: flex-start; justify-content: center; background-color: #f4f7f6; font-family: 'Segoe UI', sans-serif; padding: 40px; gap: 25px; }
+        #data-panel { width: 240px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border-top: 6px solid #e74c3c; }
+        .record-title { font-weight: bold; margin-bottom: 15px; color: #2c3e50; border-bottom: 2px solid #f0f2f5; padding-bottom: 8px; }
+        .data-item { margin-bottom: 12px; font-size: 14px; color: #555; }
+        .val { font-family: 'Consolas', monospace; font-weight: bold; float: right; color: #333; }
+        .action-text { color: #27ae60; }
+        .reaction-text { color: #e74c3c; }
+        button { width: 100%; padding: 12px; margin-top: 15px; background: #2c3e50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #1a252f; }
+        .notice { margin-top: 15px; padding-top: 10px; border-top: 1px dashed #ccc; font-size: 12px; color: #e67e22; line-height: 1.5; font-weight: bold; }
+        canvas { background: #ffffff; border: 2px solid #ddd; border-radius: 12px; cursor: crosshair; }
+    </style>
+</head>
+<body>
+
+    <div id="data-panel">
+        <div class="record-title">首次击打定量分析</div>
+        <div class="data-item">足球质量: <span class="val">1.0 kg</span></div>
+        <div class="data-item">球棒质量: <span class="val">0.5 kg</span></div>
+        <div class="data-item">击球前速: <span class="val" id="v0">-</span></div>
+        <div class="data-item">击球后速: <span class="val" id="v1">-</span></div>
+        <hr style="border:0; border-top:1px solid #eee;">
+        <div class="data-item action-text">作用力 F: <span class="val" id="fAction">-</span></div>
+        <div class="data-item reaction-text">反作用力 F': <span class="val" id="fReaction">-</span></div>
+        <button onclick="resetSimulation()">重置并回原位</button>
+        <div class="notice">注意：仅记录第一次碰撞的数据，击打一次后球棒将失效。若要再次实验，请按重置按钮。</div>
+    </div>
+
+    <canvas id="simCanvas" width="800" height="400"></canvas>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const centerY = canvas.height / 2;
+    const wallR = canvas.width - 20;
+    const wallL = 20;
+    
+    let firstHitOccurred = false;
+    let arrowTimer = 0;
+    let currentForce = 0;
+
+    const ballInit = { x: 400, y: centerY, vx: 0 };
+    const batInit = { x: 100, y: centerY - 10 };
+
+    let ball = { ...ballInit, r: 25, m: 1.0, friction: 0.985 };
+    let bat = { ...batInit, w: 90, h: 20, m: 0.5, lastX: 100, vx: 0, isDragging: false };
+
+    canvas.addEventListener('mousedown', e => {
+        if (e.offsetX > bat.x && e.offsetX < bat.x + bat.w && e.offsetY > bat.y && e.offsetY < bat.y + bat.h) bat.isDragging = true;
+    });
+
+    window.addEventListener('mouseup', () => bat.isDragging = false);
+    canvas.addEventListener('mousemove', e => { if (bat.isDragging) bat.x = e.offsetX - bat.w / 2; });
+
+    function resetSimulation() {
+        ball.x = ballInit.x; ball.vx = ballInit.vx;
+        bat.x = batInit.x; bat.lastX = batInit.x;
+        firstHitOccurred = false; arrowTimer = 0;
+        document.getElementById('v0').innerText = "-";
+        document.getElementById('v1').innerText = "-";
+        document.getElementById('fAction').innerText = "-";
+        document.getElementById('fReaction').innerText = "-";
+    }
+
+    function drawArrow(x, y, length, color) {
+        ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + length, y); ctx.stroke();
+        const head = length > 0 ? 10 : -10;
+        ctx.beginPath(); ctx.moveTo(x + length, y);
+        ctx.lineTo(x + length - head, y - 6); ctx.lineTo(x + length - head, y + 6);
+        ctx.fill();
+    }
+
+    function update() {
+        bat.vx = bat.x - bat.lastX;
+        bat.lastX = bat.x;
+
+        if (!firstHitOccurred) {
+            // 碰撞判定：当球棒右边缘触碰到球，且球棒正在向右运动
+            if (bat.x + bat.w >= ball.x - ball.r && bat.x < ball.x && bat.vx > 0) {
+                const vBefore = ball.vx;
+                // 弹性碰撞物理公式
+                const newBallVx = (2 * bat.m * bat.vx + (ball.m - bat.m) * ball.vx) / (bat.m + ball.m);
+                
+                // 计算冲力 (F = m * deltaV / deltaT)
+                const force = (ball.m * (newBallVx - ball.vx)) / 0.016;
+                currentForce = force;
+                ball.vx = newBallVx;
+                arrowTimer = 25;
+
+                document.getElementById('v0').innerText = vBefore.toFixed(2) + " m/s";
+                document.getElementById('v1').innerText = newBallVx.toFixed(2) + " m/s";
+                document.getElementById('fAction').innerText = Math.abs(force).toFixed(0) + " N";
+                document.getElementById('fReaction').innerText = Math.abs(force).toFixed(0) + " N";
+                
+                firstHitOccurred = true;
+            }
+        }
+
+        ball.x += ball.vx;
+        ball.vx *= ball.friction;
+
+        // 边界处理
+        if (ball.x + ball.r >= wallR) { ball.x = wallR - ball.r; ball.vx *= -0.7; }
+        if (ball.x - ball.r <= wallL) { ball.x = wallL + ball.r; ball.vx *= -0.7; }
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ddd";
+        ctx.fillRect(0, 0, wallL, canvas.height);
+        ctx.fillRect(wallR, 0, 20, canvas.height);
+
+        ctx.fillStyle = firstHitOccurred ? "rgba(52, 73, 94, 0.3)" : "#34495e";
+        ctx.fillRect(bat.x, bat.y, bat.w, bat.h);
+        
+        ctx.fillStyle = "#fff"; ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+        if (arrowTimer > 0) {
+            const alpha = arrowTimer / 25;
+            const len = Math.min(currentForce / 8, 150);
+            drawArrow(ball.x - ball.r, ball.y, len, `rgba(39, 174, 96, ${alpha})`); 
+            drawArrow(ball.x - ball.r, ball.y, -len, `rgba(231, 76, 60, ${alpha})`); 
+            arrowTimer--;
+        }
+    }
+    update();
+</script>
+</body>
+</html>

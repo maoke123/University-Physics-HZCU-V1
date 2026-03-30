@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>静电实验室：全模式终极版</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #1a252f; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .lab-container { background: #2c3e50; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); padding: 25px; width: 950px; display: flex; flex-direction: column; gap: 15px; }
+        .toolbar { display: flex; gap: 12px; justify-content: center; }
+        button { padding: 10px 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.3s; background: #7f8c8d; color: white; }
+        button.active { background: #3498db; transform: scale(1.05); }
+        .btn-field { background: #e74c3c; min-width: 140px; }
+        .btn-field.on { background: #27ae60; }
+        
+        canvas { background: #000; border: 2px solid #555; border-radius: 8px; width: 100%; height: 420px; }
+        
+        /* 公式面板仅在模式4显示 */
+        .formula-display { background: rgba(0,0,0,0.5); padding: 15px; border-radius: 10px; display: none; grid-template-columns: 1fr 1fr 1fr; gap: 10px; border-top: 3px solid #f1c40f; }
+        .formula-item { text-align: center; border-right: 1px solid rgba(255,255,255,0.1); padding: 0 5px; }
+        .formula-item:last-child { border-right: none; }
+        .label-zh { font-size: 0.85em; color: #bdc3c7; margin-bottom: 5px; }
+        .math-text { font-family: 'Times New Roman', serif; font-style: italic; font-size: 1.05em; color: #f1c40f; }
+        .live-val { color: #2ecc71; font-weight: bold; font-family: monospace; font-size: 1.1em; display: block; margin-top: 5px; }
+        
+        .info-text { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; font-size: 14px; border-left: 5px solid #3498db; }
+        .stats { color: #f1c40f; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="lab-container">
+    <h2 style="margin:0; text-align:center;">🔬 静电实验室：全模式演示系统</h2>
+    
+    <div class="toolbar">
+        <button id="btn1" onclick="switchMode('irregular')">1. 不规则导体</button>
+        <button id="btn2" onclick="switchMode('shielding')">2. 嵌套屏蔽</button>
+        <button id="btn3" onclick="switchMode('pointy')">3. 尖端放电</button>
+        <button id="btn4" onclick="switchMode('sphere_problem')" class="active">4. 金属球壳 (公式/跟随)</button>
+        <button id="fieldBtn" class="btn-field" onclick="toggleField()">开启外电场</button>
+    </div>
+
+    <div class="formula-display" id="mathPanel">
+        <div class="formula-item">
+            <div class="label-zh">感应电荷在球心场强</div>
+            <div class="math-text">E' = q / (4πε₀r²)</div>
+            <div id="resE" class="live-val">(--)</div>
+        </div>
+        <div class="formula-item">
+            <div class="label-zh">球壳（球心）电势</div>
+            <div class="math-text">V_O = q / (4πε₀r)</div>
+            <div id="resV" class="live-val">(--)</div>
+        </div>
+        <div class="formula-item">
+            <div class="label-zh">接地感应电荷量</div>
+            <div class="math-text">q' = -(R/r)q</div>
+            <div id="resQ" class="live-val">(--)</div>
+        </div>
+    </div>
+
+    <canvas id="mainCanvas" width="900" height="420"></canvas>
+
+    <div class="info-text" id="statusInfo">
+        请选择模式进行实验。
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 全局状态
+    let mode = 'sphere_problem'; // 默认模式4
+    let grounded = false;      // 模式4专用状态
+    let fieldActive = false;   // 模式1-3专用状态
+    
+    let particles = []; 
+    let sparks = []; 
+    let conductorPos = { x: 350, y: 210 };
+    let pointCharge = { x: 700, y: 210 }; // 模式4专用点电荷
+    let dragTarget = null;
+    const sphereR = 85; 
+
+    // 形状定义 (模式1-3)
+    const shapes = {
+        irregular: { 
+            path: [{x:-80,y:-50}, {x:50,y:-90}, {x:120,y:0}, {x:40,y:100}, {x:-100,y:60}], 
+            negAttractors: [{x:-100,y:60}, {x:-80,y:-50}], 
+            posAttractors: [{x:120,y:0}, {x:50,y:-90}, {x:40,y:100}] 
+        },
+        shielding: { outer: 110, inner: 70, core: 35 },
+        pointy: { 
+            path: [{x:150,y:-40}, {x:-50,y:-40}, {x:-200,y:0}, {x:-50,y:40}, {x:150,y:40}], 
+            negAttractors: [{x:-200,y:0}], 
+            posAttractors: [{x:150,y:-40}, {x:150,y:40}] 
+        }
+    };
+
+    // 初始化粒子
+    function initParticles() {
+        particles = [];
+        // 模式4：圆环分布初始化
+        if(mode === 'sphere_problem') {
+            let count = 280;
+            for(let i=0; i<count; i++) {
+                particles.push({ 
+                    offset: (Math.random() - 0.5) * 2, // 用于扇形分布
+                    q: (i % 2 === 0 ? 1 : -1), 
+                    angle: Math.random() * Math.PI * 2 
+                });
+            }
+        } 
+        // 模式1-3：区域填充初始化
+        else {
+            let count = 150;
+            for(let i=0; i<count; i++) {
+                let rx, ry, check;
+                do {
+                    rx = (Math.random()-0.5)*400; ry = (Math.random()-0.5)*300;
+                    check = isInside(rx + conductorPos.x, ry + conductorPos.y);
+                } while(!check.inShell && !(mode === 'shielding' && check.inCore));
+                
+                particles.push({ 
+                    x: rx, y: ry, vx:0, vy:0, 
+                    q: (i % 2 === 0 ? 1 : -1), 
+                    isCore: mode === 'shielding' && Math.sqrt(rx*rx+ry*ry) < 35 
+                });
+            }
+        }
+    }
+
+    // 切换模式逻辑
+    function switchMode(m) {
+        mode = m; 
+        grounded = false; 
+        fieldActive = false; 
+        sparks = [];
+        
+        // UI 更新
+        const btn = document.getElementById('fieldBtn');
+        const panel = document.getElementById('mathPanel');
+        btn.classList.remove('on');
+        
+        if(m === 'sphere_problem') {
+            btn.innerText = "将球壳接地";
+            panel.style.display = "grid";
+        } else {
+            btn.innerText = "开启外电场";
+            panel.style.display = "none";
+        }
+        
+        document.querySelectorAll('button').forEach(b => { if(b.id !== 'fieldBtn') b.classList.remove('active'); });
+        const map = {irregular:'btn1', shielding:'btn2', pointy:'btn3', sphere_problem:'btn4'};
+        document.getElementById(map[m]).classList.add('active');
+        
+        // 重置位置
+        conductorPos = { x: 350, y: 210 };
+        if(m === 'sphere_problem') pointCharge = { x: 700, y: 210 };
+        
+        initParticles();
+    }
+
+    // 按钮功能切换
+    function toggleField() {
+        const btn = document.getElementById('fieldBtn');
+        if(mode === 'sphere_problem') {
+            grounded = !grounded;
+            btn.classList.toggle('on', grounded);
+            btn.innerText = grounded ? "断开接地" : "将球壳接地";
+        } else {
+            fieldActive = !fieldActive;
+            btn.classList.toggle('on', fieldActive);
+            btn.innerText = fieldActive ? "关闭外电场" : "开启外电场";
+        }
+    }
+
+    // 几何判定 (主要用于模式1-3的粒子限制和点击检测)
+    function isInside(px, py) {
+        const dx = px - conductorPos.x, dy = py - conductorPos.y;
+        if (mode === 'sphere_problem') return { inShell: Math.sqrt(dx*dx + dy*dy) < sphereR + 5 }; // 略大用于点击
+        
+        if (mode === 'shielding') {
+            const d = Math.sqrt(dx*dx + dy*dy);
+            return { inShell: d < 110 && d > 70, inCore: d < 35 };
+        }
+        
+        let poly = shapes[mode].path; 
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            if (((poly[i].y > dy) != (poly[j].y > dy)) && (dx < (poly[j].x - poly[i].x) * (dy - poly[i].y) / (poly[j].y - poly[i].y) + poly[i].x)) inside = !inside;
+        }
+        return { inShell: inside };
+    }
+
+    // 绘制箭头 (模式1-3)
+    function drawArrow(fx, fy, tx, ty) {
+        const headlen = 10; const angle = Math.atan2(ty - fy, tx - fx);
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(tx, ty); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(tx, ty);
+        ctx.lineTo(tx - headlen * Math.cos(angle - Math.PI / 6), ty - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(tx - headlen * Math.cos(angle + Math.PI / 6), ty - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.closePath(); ctx.fill();
+    }
+    
+    // 角度插值 (模式4)
+    function lerpAngle(a, b, t) {
+        let diff = b - a;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        return a + diff * t;
+    }
+
+    // 交互事件
+    canvas.onmousedown = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+        
+        // 模式4：优先判定小球
+        if(mode === 'sphere_problem') {
+            if(Math.sqrt((mx - pointCharge.x)**2 + (my - pointCharge.y)**2) < 45) { dragTarget = 'q'; return; }
+            if(Math.sqrt((mx - conductorPos.x)**2 + (my - conductorPos.y)**2) < sphereR + 20) { dragTarget = 'c'; }
+        } else {
+            // 模式1-3：判定导体
+            const check = isInside(mx, my);
+            if(check.inShell || check.inCore) dragTarget = 'c';
+        }
+    };
+    
+    window.onmousemove = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        
+        // 鼠标手型逻辑
+        if(mode === 'sphere_problem') {
+            const dQ = Math.sqrt((mx - pointCharge.x)**2 + (my - pointCharge.y)**2);
+            const dC = Math.sqrt((mx - conductorPos.x)**2 + (my - conductorPos.y)**2);
+            canvas.style.cursor = (dQ < 45 || dC < sphereR + 20) ? 'pointer' : 'default';
+        } else {
+            const check = isInside(mx, my);
+            canvas.style.cursor = (check.inShell || check.inCore) ? 'move' : 'default';
+        }
+
+        if(!dragTarget) return;
+        if(dragTarget === 'c') { conductorPos.x = mx; conductorPos.y = my; }
+        else if(dragTarget === 'q') { pointCharge.x = mx; pointCharge.y = my; }
+    };
+    window.onmouseup = () => dragTarget = null;
+
+    // 主动画循环
+    function animate() {
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+
+        // ================= 模式 1-3 渲染逻辑 =================
+        if(mode !== 'sphere_problem') {
+            // 1. 电场背景
+            if(fieldActive) {
+                ctx.strokeStyle = "rgba(255, 80, 80, 0.4)"; ctx.fillStyle = "rgba(255, 80, 80, 0.6)"; ctx.lineWidth = 1.5;
+                for(let i=30; i<canvas.height; i+=50) { drawArrow(10, i, 880, i); }
+            }
+
+            // 2. 绘制导体形状
+            ctx.fillStyle = "rgba(255, 255, 255, 0.1)"; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            if(mode === 'shielding') {
+                ctx.arc(conductorPos.x, conductorPos.y, 110, 0, Math.PI*2);
+                ctx.moveTo(conductorPos.x + 70, conductorPos.y); ctx.arc(conductorPos.x, conductorPos.y, 70, 0, Math.PI*2, true);
+            } else {
+                let p = shapes[mode].path; ctx.moveTo(conductorPos.x + p[0].x, conductorPos.y + p[0].y);
+                p.forEach(pt => ctx.lineTo(conductorPos.x + pt.x, conductorPos.y + pt.y));
+            }
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+
+            // 3. 粒子动力学 (Force-based)
+            let tipNegCount = 0;
+            particles.forEach(p => {
+                let fx = (Math.random()-0.5)*0.2, fy = (Math.random()-0.5)*0.2;
+                if(fieldActive && !p.isCore) {
+                    fx += 0.55 * p.q; // 基础电场力
+                    // 尖端吸引力
+                    let attr = p.q < 0 ? shapes[mode].negAttractors : shapes[mode].posAttractors;
+                    if(attr) attr.forEach(a => {
+                        let adx = a.x - p.x, ady = a.y - p.y;
+                        let dist = adx*adx + ady*ady; if(dist < 10000) { fx += adx * 0.005; fy += ady * 0.005; }
+                    });
+                }
+                p.vx = (p.vx + fx) * 0.85; p.vy = (p.vy + fy) * 0.85;
+                let nx = p.x + p.vx, ny = p.y + p.vy;
+                
+                // 边界检测
+                let check = isInside(nx + conductorPos.x, ny + conductorPos.y);
+                if(check.inShell || (mode === 'shielding' && p.isCore)) { p.x = nx; p.y = ny; }
+                
+                ctx.fillStyle = p.q > 0 ? "#ff4757" : "#1e90ff";
+                ctx.beginPath(); ctx.arc(p.x + conductorPos.x, p.y + conductorPos.y, 3.5, 0, 7); ctx.fill();
+                
+                // 统计尖端电荷用于火花
+                if(mode === 'pointy' && p.q < 0 && p.x < -170) tipNegCount++;
+            });
+
+            // 4. 火花特效 (仅限模式3)
+            if(mode === 'pointy' && fieldActive && tipNegCount > 10 && Math.random() > 0.8) {
+                let s = { x: conductorPos.x - 200, y: conductorPos.y, segments: [{x:0, y:0}], life: 1.0 };
+                let cx = 0, cy = 0; for(let i=0; i<6; i++) { cx -= 15+Math.random()*20; cy += (Math.random()-0.5)*35; s.segments.push({x:cx, y:cy}); }
+                sparks.push(s);
+            }
+            sparks.forEach((s, i) => {
+                ctx.strokeStyle = `rgba(255, 255, 100, ${s.life})`; ctx.lineWidth = 2.5; ctx.shadowBlur = 10; ctx.shadowColor = "#f1c40f";
+                ctx.beginPath(); ctx.moveTo(s.x, s.y); s.segments.forEach(seg => ctx.lineTo(s.x+seg.x, s.y+seg.y)); ctx.stroke();
+                ctx.shadowBlur = 0; s.life -= 0.15; if(s.life <= 0) sparks.splice(i,1);
+            });
+            
+            document.getElementById('statusInfo').innerText = fieldActive ? "外电场已开启，观察电荷极化与分布。" : "静电平衡状态，内部合场强为零。";
+        }
+
+        // ================= 模式 4 渲染逻辑 =================
+        else {
+            // 1. 绘制高亮外壳
+            ctx.lineWidth = 4; ctx.strokeStyle = "#ffffff";
+            ctx.shadowBlur = 15; ctx.shadowColor = "rgba(255,255,255,0.6)";
+            let grd = ctx.createRadialGradient(conductorPos.x, conductorPos.y, sphereR-10, conductorPos.x, conductorPos.y, sphereR);
+            grd.addColorStop(0, "rgba(255, 255, 255, 0.05)"); grd.addColorStop(1, "rgba(255, 255, 255, 0.2)");
+            ctx.fillStyle = grd;
+            ctx.beginPath(); ctx.arc(conductorPos.x, conductorPos.y, sphereR, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            
+            // 2. 距离连线
+            ctx.setLineDash([8, 6]); ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 2; ctx.shadowBlur = 0;
+            ctx.beginPath(); ctx.moveTo(conductorPos.x, conductorPos.y); ctx.lineTo(pointCharge.x, pointCharge.y); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 3. 接地符号
+            if(grounded) {
+                ctx.strokeStyle = "#27ae60"; ctx.lineWidth = 3;
+                let gx = conductorPos.x, gy = conductorPos.y + sphereR;
+                ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy+35); ctx.stroke();
+                for(let i=0; i<3; i++) { let w = 18 - i*6; ctx.beginPath(); ctx.moveTo(gx-w, gy+35+i*6); ctx.lineTo(gx+w, gy+35+i*6); ctx.stroke(); }
+            }
+
+            // 4. 粒子跟随 (Angle-based)
+            let dx = pointCharge.x - conductorPos.x, dy = pointCharge.y - conductorPos.y;
+            let r_pixel = Math.sqrt(dx*dx + dy*dy);
+            let angleToQ = Math.atan2(dy, dx); 
+            let safeR = Math.max(r_pixel, sphereR + 10);
+            let inductionStrength = 15000 / (safeR * safeR);
+            let spreadBase = Math.max(0.2, 1.5 - inductionStrength);
+
+            particles.forEach(p => {
+                if (grounded && p.q > 0) return;
+                let targetAngle = (p.q < 0) ? angleToQ : angleToQ + Math.PI;
+                let spread = (p.q < 0) ? spreadBase * 0.8 : spreadBase * 2.0;
+                let finalTarget = targetAngle + p.offset * spread;
+                p.angle = lerpAngle(p.angle, finalTarget, 0.15);
+                
+                let px = conductorPos.x + Math.cos(p.angle) * (sphereR - 4);
+                let py = conductorPos.y + Math.sin(p.angle) * (sphereR - 4);
+                
+                ctx.fillStyle = p.q > 0 ? "#ff4757" : "#1e90ff";
+                ctx.beginPath(); ctx.arc(px, py, 4, 0, 7); ctx.fill();
+            });
+
+            // 5. 数据与点电荷
+            const k = 90000; const q_real = 600;
+            document.getElementById('resE').innerText = `(${ (k * q_real / (r_pixel*r_pixel)).toFixed(3) } N/C)`;
+            document.getElementById('resV').innerText = `(${ (k * q_real / r_pixel).toFixed(1) } V)`;
+            document.getElementById('resQ').innerText = grounded ? `(${ (-(sphereR/r_pixel) * q_real).toFixed(1) } μC)` : "(0.0 μC)";
+            document.getElementById('statusInfo').innerHTML = `实时距离 r = <span class="stats">${Math.round(r_pixel)}</span> | 状态: ${grounded?'已接地':'未接地'}`;
+            
+            ctx.fillStyle = "#f1c40f"; ctx.beginPath(); ctx.arc(pointCharge.x, pointCharge.y, 14, 0, 7); ctx.fill();
+            ctx.fillStyle = "black"; ctx.font = "bold 14px Arial"; ctx.fillText("+q", pointCharge.x-8, pointCharge.y+5);
+        }
+
+        requestAnimationFrame(animate);
+    }
+    
+    // 初始化启动
+    initParticles(); 
+    animate();
+    switchMode('sphere_problem'); // 默认进入最复杂的模式4检查效果
+</script>
+</body>
+</html>

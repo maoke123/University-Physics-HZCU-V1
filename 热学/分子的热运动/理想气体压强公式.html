@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>理想气体压强公式微观推导演示</title>
+    <script>
+        MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --primary: #2563eb; --bg-color: #f8fafc; --card-bg: #ffffff;
+            --text-main: #1e293b; --text-light: #64748b;
+            --highlight: #0ea5e9; --warning: #f59e0b; --danger: #ef4444;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color); color: var(--text-main);
+            margin: 0; padding: 30px 20px; display: flex; justify-content: center;
+        }
+        .container {
+            background-color: var(--card-bg); padding: 30px; border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); width: 100%; max-width: 1300px;
+            display: flex; flex-direction: column; gap: 20px;
+        }
+        .header { text-align: center; padding-bottom: 20px; border-bottom: 1px solid #e2e8f0; }
+        .header h1 { margin: 0 0 10px 0; font-size: 26px; }
+        .header p { margin: 0; color: var(--text-light); font-size: 15px; }
+        
+        .main-content { display: flex; flex-wrap: wrap; gap: 30px; align-items: flex-start; }
+        .left-panel { flex: 0 0 380px; display: flex; flex-direction: column; gap: 20px; }
+        .right-panel { flex: 1; min-width: 600px; display: flex; flex-direction: column; align-items: center; position: relative; }
+
+        .controls { padding: 20px; background-color: #f1f5f9; border-radius: 8px; display: flex; flex-direction: column; gap: 15px; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        label { font-weight: 600; font-size: 14px; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        
+        .toggle-group { display: flex; background: #e2e8f0; border-radius: 6px; overflow: hidden; margin-top: 5px; }
+        .toggle-btn { flex: 1; text-align: center; padding: 8px; cursor: pointer; font-size: 14px; font-weight: bold; transition: all 0.2s; color: var(--text-light); }
+        .toggle-btn.active { background: var(--primary); color: white; }
+
+        canvas {
+            display: block; width: 100%; height: auto; max-height: 580px;
+            border: 2px solid #cbd5e1; border-radius: 8px; background-color: #0f172a; 
+        }
+        
+        .math-section { padding: 20px; background-color: #fafafa; border: 1px solid #e2e8f0; border-radius: 8px; }
+        .formula-card { background: white; padding: 12px 15px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 15px; border-left: 4px solid var(--highlight); }
+        .formula-card:last-child { margin-bottom: 0; }
+        .formula-title { font-weight: bold; font-size: 13px; margin-bottom: 5px; color: var(--text-main); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>理想气体压强公式的微观推导</h1>
+        <p>重点观察右侧深蓝色器壁：宏观压强是大量分子频繁撞击器壁传递动量（冲量）的统计平均表现。</p>
+    </div>
+
+    <div class="main-content">
+        <div class="left-panel">
+            <div class="controls">
+                <div class="control-group">
+                    <label>系统温度 T (改变分子平均动能): <span id="tempVal" style="color:var(--danger);">300</span> K</label>
+                    <input type="range" id="tempSlider" min="50" max="1500" value="300" step="10">
+                </div>
+                
+                <div class="control-group" style="margin-top: 10px;">
+                    <label>时间流速控制 (看清撞击细节)</label>
+                    <div class="toggle-group">
+                        <div class="toggle-btn active" id="btnNormal" onclick="setTimeScale(1)">正常速度</div>
+                        <div class="toggle-btn" id="btnSlow" onclick="setTimeScale(0.1)">慢动作 (1/10)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="math-section">
+                <h3 style="margin:0 0 15px 0; font-size:15px; text-align:center;">推导核心逻辑</h3>
+                
+                <div class="formula-card">
+                    <div class="formula-title">1. 单次弹性碰撞的动量变化 (冲量)</div>
+                    <div style="font-size: 13px; color: var(--text-light); margin-bottom: 5px;">分子以 $v_{xi}$ 撞击器壁并反弹，器壁受到的冲量：</div>
+                    <div>$$I_i = \Delta p_x = 2m_0 v_{xi}$$</div>
+                </div>
+
+                <div class="formula-card" style="border-left-color: var(--warning);">
+                    <div class="formula-title">2. 器壁受到的平均冲力</div>
+                    <div style="font-size: 13px; color: var(--text-light); margin-bottom: 5px;">极短时间 $\Delta t$ 内，所有撞击分子的冲量总和：</div>
+                    <div>$$F = \frac{\sum 2m_0 v_{xi}}{\Delta t}$$</div>
+                </div>
+
+                <div class="formula-card" style="border-left-color: var(--danger);">
+                    <div class="formula-title">3. 宏观统计压强公式</div>
+                    <div style="font-size: 13px; color: var(--text-light); margin-bottom: 5px;">力除以面积，代入分子密度 $n$ 和方均根速率：</div>
+                    <div>$$p = \frac{F}{A} = \frac{1}{3}nm_0\overline{v^2} = nkT$$</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <canvas id="simCanvas" width="800" height="580"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // --- 物理与3D视图参数 ---
+    const boxSize = { w: 150, h: 100, d: 150 }; 
+    const numParticles = 80;
+    const m0 = 1; 
+    let temperature = 300;
+    let timeScale = 1.0;
+    const baseSpeed = 4.0;
+    
+    const focalLength = 500;
+    const cameraZ = -450; 
+    
+    let particles = [];
+    let impacts = []; 
+    
+    let recentImpulses = []; 
+    let smoothedPressure = 0; 
+
+    class Particle {
+        constructor() {
+            this.x = (Math.random() * 2 - 1) * boxSize.w;
+            this.y = (Math.random() * 2 - 1) * boxSize.h;
+            this.z = (Math.random() * 2 - 1) * boxSize.d;
+            
+            const theta = Math.random() * 2 * Math.PI;
+            const phi = Math.acos(Math.random() * 2 - 1);
+            const speed = baseSpeed * Math.sqrt(temperature / 300);
+            
+            this.vx = speed * Math.sin(phi) * Math.cos(theta);
+            this.vy = speed * Math.sin(phi) * Math.sin(theta);
+            this.vz = speed * Math.cos(phi);
+            
+            this.radius = 4;
+        }
+
+        update() {
+            this.x += this.vx * timeScale;
+            this.y += this.vy * timeScale;
+            this.z += this.vz * timeScale;
+
+            if (this.x > boxSize.w - this.radius) {
+                this.x = boxSize.w - this.radius;
+                this.vx *= -1;
+                
+                let impulse = 2 * m0 * Math.abs(this.vx / timeScale); 
+                impacts.push({
+                    x: boxSize.w, y: this.y, z: this.z,
+                    v_x: Math.abs(this.vx / timeScale),
+                    life: 1.0, maxLife: 1.0
+                });
+                recentImpulses.push(impulse);
+            } else if (this.x < -boxSize.w + this.radius) {
+                this.x = -boxSize.w + this.radius;
+                this.vx *= -1;
+            }
+
+            if (this.y > boxSize.h - this.radius) { this.y = boxSize.h - this.radius; this.vy *= -1; }
+            if (this.y < -boxSize.h + this.radius) { this.y = -boxSize.h + this.radius; this.vy *= -1; }
+            if (this.z > boxSize.d - this.radius) { this.z = boxSize.d - this.radius; this.vz *= -1; }
+            if (this.z < -boxSize.d + this.radius) { this.z = -boxSize.d + this.radius; this.vz *= -1; }
+        }
+    }
+
+    function project(x, y, z) {
+        const scale = focalLength / (focalLength + z - cameraZ);
+        return {
+            x: canvas.width / 2 + x * scale,
+            y: canvas.height / 2 + 30 + y * scale, 
+            scale: scale
+        };
+    }
+
+    function init() {
+        particles = [];
+        for (let i = 0; i < numParticles; i++) {
+            particles.push(new Particle());
+        }
+    }
+
+    function drawBox() {
+        const corners = [
+            [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], 
+            [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]      
+        ].map(c => project(c[0]*boxSize.w, c[1]*boxSize.h, c[2]*boxSize.d));
+
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+        ctx.lineWidth = 1;
+        
+        const connect = (i, j) => {
+            ctx.beginPath(); ctx.moveTo(corners[i].x, corners[i].y); ctx.lineTo(corners[j].x, corners[j].y); ctx.stroke();
+        };
+
+        for(let i=0; i<4; i++) {
+            connect(i, (i+1)%4);
+            connect(i, i+4);
+            connect(i+4, (i+1)%4+4);
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(corners[1].x, corners[1].y); 
+        ctx.lineTo(corners[2].x, corners[2].y); 
+        ctx.lineTo(corners[6].x, corners[6].y); 
+        ctx.lineTo(corners[5].x, corners[5].y); 
+        ctx.closePath();
+        
+        ctx.fillStyle = 'rgba(14, 165, 233, 0.15)'; 
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(14, 165, 233, 0.8)'; 
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+
+    function drawGauge(pressure) {
+        const cx = canvas.width / 2;
+        const cy = 110;
+        const r = 60;
+        
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 2.2);
+        ctx.strokeStyle = '#334155'; ctx.lineWidth = 6; ctx.stroke();
+        
+        const gradient = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
+        gradient.addColorStop(0, '#10b981'); 
+        gradient.addColorStop(0.5, '#f59e0b'); 
+        gradient.addColorStop(1, '#ef4444'); 
+        
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 2.2);
+        ctx.strokeStyle = gradient; ctx.lineWidth = 4; ctx.stroke();
+        
+        // 调整了最大压强期望值，以适应最高温度1500K的情况
+        const maxExpectedPressure = 350; 
+        let ratio = pressure / maxExpectedPressure;
+        if(ratio > 1) ratio = 1;
+        
+        const startAngle = Math.PI * 0.8;
+        const endAngle = Math.PI * 2.2;
+        const pointerAngle = startAngle + ratio * (endAngle - startAngle);
+        
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + (r - 10) * Math.cos(pointerAngle), cy + (r - 10) * Math.sin(pointerAngle));
+        ctx.strokeStyle = '#f8fafc'; ctx.lineWidth = 3; ctx.stroke();
+        
+        ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI*2);
+        ctx.fillStyle = '#f8fafc'; ctx.fill();
+
+        // 【新增】实时动态数字显示
+        ctx.fillStyle = '#0ea5e9'; // 亮蓝色更有科技感
+        ctx.font = 'bold 22px sans-serif'; 
+        ctx.textAlign = 'center';
+        ctx.fillText(pressure.toFixed(1), cx, cy - 20); // 显示在圆心上方
+
+        ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif'; 
+        ctx.fillText("相对压强 P", cx, cy + 25);
+    }
+
+    function animate() {
+        ctx.fillStyle = 'rgba(15, 23, 42, 1.0)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (Math.random() < 0.1 * (1/timeScale)) {
+            recentImpulses.shift(); 
+        }
+        let currentTotalImpulse = recentImpulses.reduce((a, b) => a + b, 0);
+        smoothedPressure += (currentTotalImpulse - smoothedPressure) * 0.05;
+        
+        // 绘制更新后的仪表盘
+        drawGauge(smoothedPressure);
+
+        particles.sort((a, b) => b.z - a.z);
+        drawBox();
+
+        for (let p of particles) {
+            p.update();
+            const proj = project(p.x, p.y, p.z);
+            
+            ctx.beginPath();
+            ctx.arc(proj.x, proj.y, p.radius * proj.scale, 0, Math.PI * 2);
+            const depthAlpha = Math.max(0.2, 1 - (p.z + boxSize.d) / (2 * boxSize.d));
+            ctx.fillStyle = `rgba(226, 232, 240, ${depthAlpha})`; 
+            ctx.fill();
+        }
+
+        for (let i = impacts.length - 1; i >= 0; i--) {
+            let imp = impacts[i];
+            const proj = project(imp.x, imp.y, imp.z);
+            
+            ctx.beginPath();
+            const animProgress = 1 - imp.life;
+            const radius = 5 + animProgress * 30 * proj.scale;
+            ctx.arc(proj.x, proj.y, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(14, 165, 233, ${imp.life})`; 
+            ctx.lineWidth = 2 * proj.scale;
+            ctx.stroke();
+
+            ctx.fillStyle = `rgba(245, 158, 11, ${imp.life})`; 
+            ctx.font = `bold ${Math.max(10, 14 * proj.scale)}px sans-serif`;
+            ctx.textAlign = 'left';
+            
+            const textX = proj.x + 10;
+            const textY = proj.y - 10 - animProgress * 20;
+            ctx.fillText(`Δpx = 2m0vx`, textX, textY);
+
+            imp.life -= 0.03 * timeScale;
+            if (imp.life <= 0) impacts.splice(i, 1);
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    document.getElementById('tempSlider').addEventListener('input', (e) => {
+        let newTemp = parseFloat(e.target.value);
+        document.getElementById('tempVal').innerText = newTemp;
+        
+        let ratio = Math.sqrt(newTemp / temperature);
+        temperature = newTemp;
+        for(let p of particles) {
+            p.vx *= ratio;
+            p.vy *= ratio;
+            p.vz *= ratio;
+        }
+    });
+
+    window.setTimeScale = function(scale) {
+        timeScale = scale;
+        if(scale === 1) {
+            document.getElementById('btnNormal').classList.add('active');
+            document.getElementById('btnSlow').classList.remove('active');
+        } else {
+            document.getElementById('btnSlow').classList.add('active');
+            document.getElementById('btnNormal').classList.remove('active');
+        }
+    };
+
+    init();
+    animate();
+</script>
+</body>
+</html>

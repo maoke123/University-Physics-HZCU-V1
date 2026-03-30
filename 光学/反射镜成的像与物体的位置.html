@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>薄透镜成像模型 - 带坐标刻度</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; background: #f4f7f6; color: #333; }
+        canvas { background: #fff; border: 1px solid #aaa; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-top: 20px; cursor: crosshair; }
+        .controls { background: white; padding: 25px; border-radius: 12px; width: 800px; display: flex; justify-content: space-around; align-items: center; margin-top: 20px; }
+        .slider-group { display: flex; flex-direction: column; align-items: flex-start; }
+        .label { font-size: 0.9em; margin-bottom: 5px; color: #666; }
+        input[type="range"] { width: 250px; }
+        .data-panel { font-family: 'Courier New', Courier, monospace; background: #333; color: #0f0; padding: 15px; border-radius: 8px; font-size: 0.85em; min-width: 180px; }
+    </style>
+</head>
+<body>
+
+    <h2>薄透镜成像：几何光学演示</h2>
+
+    <div class="controls">
+        <div class="slider-group">
+            <span class="label">焦距 (f): <strong id="fDisp">100</strong> px</span>
+            <input type="range" id="fVal" min="60" max="150" value="100">
+        </div>
+        <div class="slider-group">
+            <span class="label">物距 (u): <strong id="uDisp">250</strong> px</span>
+            <input type="range" id="uVal" min="10" max="500" value="250">
+        </div>
+        <div class="data-panel">
+            1/u + 1/v = 1/f <br>
+            ----------------<br>
+            物距 u: <span id="uData"></span><br>
+            像距 v: <span id="vData"></span><br>
+            放大 M: <span id="mData"></span>
+        </div>
+    </div>
+
+    <canvas id="lensCanvas" width="1000" height="400"></canvas>
+
+    <script>
+        const canvas = document.getElementById('lensCanvas');
+        const ctx = canvas.getContext('2d');
+        const fInput = document.getElementById('fVal');
+        const uInput = document.getElementById('uVal');
+
+        function drawRuler(centerX, centerY) {
+            ctx.strokeStyle = '#bbb';
+            ctx.fillStyle = '#888';
+            ctx.lineWidth = 1;
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+
+            // 绘制主光轴刻度，每 50 像素一个长刻度，10 像素一个短刻度
+            for (let x = -500; x <= 500; x += 10) {
+                let posX = centerX + x;
+                let tickHeight = (x % 50 === 0) ? 10 : 5;
+                
+                ctx.beginPath();
+                ctx.moveTo(posX, centerY - tickHeight);
+                ctx.lineTo(posX, centerY + tickHeight);
+                ctx.stroke();
+
+                if (x !== 0 && x % 50 === 0) {
+                    ctx.fillText(Math.abs(x), posX, centerY + 25);
+                }
+            }
+            ctx.fillText("0 (光心)", centerX, centerY + 25);
+        }
+
+        function draw() {
+            const f = parseFloat(fInput.value);
+            const u = parseFloat(uInput.value);
+            const v = (f * u) / (u - f);
+            const m = -(v / u); // 放大率
+
+            // 更新 UI
+            document.getElementById('fDisp').innerText = f;
+            document.getElementById('uDisp').innerText = u;
+            document.getElementById('uData').innerText = u.toFixed(1);
+            document.getElementById('vData').innerText = isFinite(v) ? v.toFixed(1) : "∞";
+            document.getElementById('mData').innerText = isFinite(m) ? Math.abs(m).toFixed(2) + (m < 0 ? " (倒)" : " (正)") : "-";
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const h = 60; // 物高
+
+            // 1. 绘制背景刻度
+            drawRuler(centerX, centerY);
+
+            // 2. 主光轴
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, centerY); ctx.lineTo(canvas.width, centerY); ctx.stroke();
+
+            // 3. 绘制透镜
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#2c3e50';
+            ctx.beginPath(); ctx.moveTo(centerX, centerY - 160); ctx.lineTo(centerX, centerY + 160); ctx.stroke();
+            
+            // 4. 标注核心点 F 和 2F
+            const points = [{v: f, l: 'F'}, {v: 2*f, l: '2F'}];
+            points.forEach(p => {
+                ctx.fillStyle = '#e74c3c';
+                [-1, 1].forEach(dir => {
+                    ctx.beginPath();
+                    ctx.arc(centerX + p.v * dir, centerY, 4, 0, Math.PI*2);
+                    ctx.fill();
+                    ctx.fillText(p.l, centerX + p.v * dir, centerY - 10);
+                });
+            });
+
+            // 5. 绘制物体
+            const objX = centerX - u;
+            ctx.strokeStyle = '#27ae60';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(objX, centerY);
+            ctx.lineTo(objX, centerY - h);
+            ctx.stroke();
+            // 画个箭头
+            ctx.beginPath();
+            ctx.moveTo(objX - 5, centerY - h + 10);
+            ctx.lineTo(objX, centerY - h);
+            ctx.lineTo(objX + 5, centerY - h + 10);
+            ctx.stroke();
+
+            // 6. 光线追踪
+            if (isFinite(v)) {
+                const imgX = centerX + v;
+                const imgH = m * h;
+
+                // 光线1：平行光线过焦点
+                ctx.setLineDash([5, 3]);
+                ctx.strokeStyle = '#f39c12';
+                ctx.beginPath();
+                ctx.moveTo(objX, centerY - h);
+                ctx.lineTo(centerX, centerY - h);
+                ctx.lineTo(imgX, centerY - imgH);
+                ctx.stroke();
+
+                // 光线2：过光心光线
+                ctx.strokeStyle = '#9b59b6';
+                ctx.beginPath();
+                ctx.moveTo(objX, centerY - h);
+                ctx.lineTo(imgX, centerY - imgH);
+                ctx.stroke();
+
+                ctx.setLineDash([]);
+                
+                // 7. 绘制像
+                ctx.strokeStyle = '#2980b9';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(imgX, centerY);
+                ctx.lineTo(imgX, centerY - imgH);
+                ctx.stroke();
+                
+                // 像的名称标注
+                ctx.fillStyle = '#2980b9';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText(v > 0 ? "实像 (Real)" : "虚像 (Virtual)", imgX, centerY - imgH - 15);
+            }
+        }
+
+        [fInput, uInput].forEach(el => el.addEventListener('input', draw));
+        draw();
+    </script>
+</body>
+</html>

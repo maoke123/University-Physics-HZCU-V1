@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>势能与保守力关系 - 大学物理可视化</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;background:linear-gradient(135deg,#1a1a2e,#16213e);min-height:100vh;color:#e8e8e8;padding:20px}
+        .header{text-align:center;margin-bottom:25px}
+        .header h1{font-size:2em;background:linear-gradient(90deg,#00d9ff,#00ff88);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+        .header p{color:#a0a0a0;margin-top:5px}
+        .formula-banner{display:flex;justify-content:center;gap:30px;flex-wrap:wrap;margin-bottom:25px;padding:15px;background:rgba(255,255,255,0.05);border-radius:12px}
+        .formula-item{text-align:center;padding:10px 20px;background:rgba(0,217,255,0.1);border-radius:8px}
+        .formula-item .f{font-size:1.2em;font-family:"Times New Roman",serif;color:#00ff88}
+        .formula-item .d{font-size:0.8em;color:#aaa;margin-top:3px}
+        .main-container{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:20px;max-width:1400px;margin:0 auto}
+        .card{background:rgba(255,255,255,0.03);border-radius:16px;padding:20px;border:1px solid rgba(255,255,255,0.08)}
+        .card-title{font-size:1.2em;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+        .title-gravity{color:#4facfe}.title-universal{color:#f5576c}.title-spring{color:#38ef7d}
+        .formula-note{font-size:0.85em;color:#aaa;font-family:"Times New Roman",serif;padding:8px 12px;background:rgba(0,0,0,0.2);border-radius:6px;margin-bottom:12px}
+        .animation-area{position:relative;height:160px;background:rgba(0,0,0,0.2);border-radius:10px;margin-bottom:12px;overflow:hidden}
+        .animation-canvas{width:100%;height:100%}
+        .anim-controls{display:flex;justify-content:center;gap:10px;margin-bottom:12px}
+        .anim-btn{padding:8px 18px;border:none;border-radius:20px;font-size:0.9em;cursor:pointer;transition:all 0.3s;font-weight:600}
+        .anim-btn.play{background:linear-gradient(135deg,#667eea,#764ba2);color:white}
+        .anim-btn.play:hover{transform:scale(1.05);box-shadow:0 5px 15px rgba(102,126,234,0.4)}
+        .anim-btn.reset{background:rgba(255,255,255,0.1);color:#ccc;border:1px solid rgba(255,255,255,0.2)}
+        .anim-btn:disabled{opacity:0.5}
+        .motion-state{display:flex;justify-content:center;gap:20px;padding:8px;background:rgba(0,0,0,0.2);border-radius:8px;margin-bottom:12px;font-size:0.9em}
+        .state-item{display:flex;align-items:center;gap:5px}
+        .state-dot{width:8px;height:8px;border-radius:50%;background:#666}
+        .state-dot.active{background:#00ff88;box-shadow:0 0 8px #00ff88}
+        .state-dot.moving{background:#ffd700;box-shadow:0 0 8px #ffd700;animation:pulse 0.5s infinite}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+        .control-row{display:flex;gap:12px;margin-bottom:10px}
+        .control-group{flex:1}
+        .control-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;font-size:0.85em}
+        .control-label .v{font-family:"Times New Roman",serif;color:#00ff88;font-weight:600}
+        .slider-container{position:relative;height:6px;background:rgba(255,255,255,0.1);border-radius:3px}
+        .slider-fill{position:absolute;left:0;top:0;height:100%;border-radius:3px;transition:width 0.1s}
+        .fill-gravity{background:#4facfe}.fill-universal{background:#f5576c}.fill-spring{background:#38ef7d}
+        input[type="range"]{width:100%;height:6px;-webkit-appearance:none;background:transparent;position:relative;z-index:2;cursor:pointer;margin-top:-6px}
+        input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:white;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.3)}
+        .status-display{display:flex;justify-content:space-around;flex-wrap:wrap;gap:8px;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;margin-bottom:12px}
+        .status-item{text-align:center;min-width:70px}
+        .status-label{font-size:0.7em;color:#888;margin-bottom:3px}
+        .status-value{font-size:1em;font-family:"Times New Roman",serif;font-weight:600}
+        .v-gold{color:#ffd700}.v-red{color:#ff6b6b}.v-green{color:#4ecdc4}.v-white{color:#fff}
+        .relation-box{padding:12px;background:rgba(0,0,0,0.3);border-radius:8px;margin-bottom:12px}
+        .relation-title{font-size:0.8em;color:#aaa;text-align:center;margin-bottom:10px}
+        .relation-formula{text-align:center;font-family:"Times New Roman",serif;font-size:1.2em;color:#00ff88;margin-bottom:12px}
+        .relation-values{display:flex;justify-content:space-around;align-items:center}
+        .rel-item{text-align:center}
+        .rel-item .l{font-size:0.7em;color:#888;margin-bottom:4px}
+        .rel-item .v{font-family:"Times New Roman",serif;font-size:1em;font-weight:600}
+        .work-indicator{height:24px;background:rgba(0,0,0,0.2);border-radius:12px;margin-bottom:6px;position:relative;overflow:hidden}
+        .work-bar{position:absolute;top:0;height:100%;border-radius:12px;transition:all 0.3s}
+        .work-pos{left:50%;background:linear-gradient(90deg,transparent,#ff6b6b)}
+        .work-neg{right:50%;background:linear-gradient(270deg,transparent,#4ecdc4)}
+        .work-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:0.75em;color:#888;z-index:2}
+        .work-labels{display:flex;justify-content:space-between;font-size:0.65em;color:#666}
+        .info-section{max-width:1400px;margin:25px auto 0;padding:20px;background:rgba(255,255,255,0.03);border-radius:12px}
+        .info-section h3{color:#00d9ff;margin-bottom:12px}
+        .info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:15px}
+        .info-box{padding:12px;background:rgba(0,0,0,0.2);border-radius:8px}
+        .info-box h4{color:#00ff88;margin-bottom:8px;font-size:0.95em}
+        .info-box p{color:#b0b0b0;line-height:1.5;font-size:0.9em}
+        @media(max-width:768px){.header h1{font-size:1.5em}.main-container{grid-template-columns:1fr}.control-row{flex-direction:column}}
+    </style>
+</head>
+<body>
+<div class="header">
+    <h1>势能与保守力关系可视化</h1>
+    <p>点击"▶ 播放动画"观察物体移动时势能与保守力的动态变化</p>
+</div>
+
+<div class="formula-banner">
+    <div class="formula-item">
+        <div class="f">W = -ΔEₚ = Eₚ₁ - Eₚ₂</div>
+        <div class="d">保守力做功 = -势能变化</div>
+    </div>
+    <div class="formula-item">
+        <div class="f">F = -dEₚ/dx</div>
+        <div class="d">保守力 = -势能梯度</div>
+    </div>
+    <div class="formula-item">
+        <div class="f">W>0 → ↓Eₚ</div>
+        <div class="d">力正方向 → 势能减少</div>
+    </div>
+</div>
+
+<div class="main-container">
+    <!-- 重力势能 -->
+    <div class="card">
+        <div class="card-title title-gravity">⬇ 重力势能 Eₚ = mgh</div>
+        <div class="formula-note">保守力 F = mg (向下) | 零势能点：地面 h = 0</div>
+        <div class="animation-area"><canvas class="animation-canvas" id="g-canvas"></canvas></div>
+        <div class="motion-state">
+            <div class="state-item"><span class="state-dot" id="g-dot-a"></span><span>起点 A (h₁)</span></div>
+            <div class="state-item"><span class="state-dot" id="g-dot-m"></span><span>运动中</span></div>
+            <div class="state-item"><span class="state-dot" id="g-dot-b"></span><span>终点 B (h₂)</span></div>
+        </div>
+        <div class="anim-controls">
+            <button class="anim-btn play" id="g-play">▶ 播放动画</button>
+            <button class="anim-btn reset" id="g-reset">↺ 重置</button>
+        </div>
+        <div class="control-row">
+            <div class="control-group">
+                <div class="control-label"><span>质量 m (kg)</span><span class="v" id="g-m-v">5.0</span></div>
+                <div class="slider-container"><div class="slider-fill fill-gravity" id="g-m-fill" style="width:50%"></div></div>
+                <input type="range" id="g-m" min="1" max="10" step="0.5" value="5">
+            </div>
+            <div class="control-group">
+                <div class="control-label"><span>g (m/s²)</span><span class="v" id="g-g-v">9.8</span></div>
+                <div class="slider-container"><div class="slider-fill fill-gravity" id="g-g-fill" style="width:98%"></div></div>
+                <input type="range" id="g-g" min="1" max="10" step="0.1" value="9.8">
+            </div>
+        </div>
+        <div class="control-row">
+            <div class="control-group">
+                <div class="control-label"><span>起点 h₁ (m)</span><span class="v" id="g-h1-v">15.0</span></div>
+                <div class="slider-container"><div class="slider-fill fill-gravity" id="g-h1-fill" style="width:75%"></div></div>
+                <input type="range" id="g-h1" min="0" max="20" step="0.5" value="15">
+            </div>
+            <div class="control-group">
+                <div class="control-label"><span>终点 h₂ (m)</span><span class="v" id="g-h2-v">5.0</span></div>
+                <div class="slider-container"><div class="slider-fill fill-gravity" id="g-h2-fill" style="width:25%"></div></div>
+                <input type="range" id="g-h2" min="0" max="20" step="0.5" value="5">
+            </div>
+        </div>
+<div class="status-display">
+            <div class="status-item"><div class="status-label">初态势能 Eₚ₁</div><div class="status-value v-gold" id="g-ep1">735 J</div></div>
+            <div class="status-item"><div class="status-label">末态势能 Eₚ₂</div><div class="status-value v-gold" id="g-ep2">245 J</div></div>
+            <div class="status-item"><div class="status-label">重力 F</div><div class="status-value" id="g-f">49 N</div></div>
+            <div class="status-item"><div class="status-label">当前势能</div><div class="status-value v-white" id="g-ep">735 J</div></div>
+        </div>
+        <div class="relation-box">
+            <div class="relation-title">势能与做功的动态关系</div>
+            <div class="relation-formula">W = Eₚ₁ - Eₚ₂ = -ΔEₚ</div>
+            <div class="relation-values">
+                <div class="rel-item"><div class="l">保守力做功 W</div><div class="v v-gold" id="g-w">490 J</div></div>
+                <div class="rel-item"><div class="l">势能变化 ΔEₚ</div><div class="v v-red" id="g-de">-490 J</div></div>
+                <div class="rel-item"><div class="l">W + ΔEₚ</div><div class="v v-green" id="g-sum">0 J</div></div>
+            </div>
+        </div>
+        <div class="work-indicator">
+            <div class="work-bar work-pos" id="g-wpos"></div>
+            <div class="work-bar work-neg" id="g-wneg"></div>
+            <div class="work-center" id="g-msg">点击播放</div>
+        </div>
+        <div class="work-labels"><span style="color:#4ecdc4">← 势能增加</span><span style="color:#888">W = -ΔEₚ</span><span style="color:#ff6b6b">势能减少 →</span></div>
+    </div>
+
+    <!-- 引力势能 -->
+    <div class="card">
+        <div class="card-title title-universal">🌍 引力势能 Eₚ = -GMm/r</div>
+        <div class="formula-note">保守力 F = GMm/r² (指向地心) | 零势能点：r → ∞</div>
+        <div class="animation-area"><canvas class="animation-canvas" id="u-canvas"></canvas></div>
+        <div class="motion-state">
+            <div class="state-item"><span class="state-dot" id="u-dot-a"></span><span>起点 A (r₁)</span></div>
+            <div class="state-item"><span class="state-dot" id="u-dot-m"></span><span>运动中</span></div>
+            <div class="state-item"><span class="state-dot" id="u-dot-b"></span><span>终点 B (r₂)</span></div>
+        </div>
+        <div class="anim-controls">
+            <button class="anim-btn play" id="u-play">▶ 播放动画</button>
+            <button class="anim-btn reset" id="u-reset">↺ 重置</button>
+        </div>
+        <div class="control-row">
+            <div class="control-group">
+                <div class="control-label"><span>M (×10²⁴kg)</span><span class="v" id="u-M-v">5.97</span></div>
+                <div class="slider-container"><div class="slider-fill fill-universal" id="u-M-fill" style="width:30%"></div></div>
+                <input type="range" id="u-M" min="0.5" max="200" step="0.1" value="5.97">
+            </div>
+            <div class="control-group">
+                <div class="control-label"><span>m (kg)</span><span class="v" id="u-m-v">1000</span></div>
+                <div class="slider-container"><div class="slider-fill fill-universal" id="u-m-fill" style="width:50%"></div></div>
+                <input type="range" id="u-m" min="100" max="10000" step="100" value="1000">
+            </div>
+        </div>
+        <div class="control-row">
+            <div class="control-group">
+                <div class="control-label"><span>起点 r₁ (×10⁶m)</span><span class="v" id="u-r1-v">10.0</span></div>
+                <div class="slider-container"><div class="slider-fill fill-universal" id="u-r1-fill" style="width:20%"></div></div>
+                <input type="range" id="u-r1" min="6.37" max="100" step="0.1" value="10">
+            </div>
+            <div class="control-group">
+                <div class="control-label"><span>终点 r₂ (×10⁶m)</span><span class="v" id="u-r2-v">20.0</span></div>
+                <div class="slider-container"><div class="slider-fill fill-universal" id="u-r2-fill" style="width:70%"></div></div>
+                <input type="range" id="u-r2" min="6.37" max="100" step="0.1" value="20">
+            </div>
+        </div>
+        <div class="status-display">
+            <div class="status-item"><div class="status-label">初态势能 Eₚ₁</div><div class="status-value v-gold" id="u-ep1">-3.97×10¹⁰J</div></div>
+            <div class="status-item"><div class="status-label">末态势能 Eₚ₂</div><div class="status-value v-gold" id="u-ep2">-1.98×10¹⁰J</div></div>
+            <div class="status-item"><div class="status-label">引力 F</div><div class="status-value" id="u-f">2.49 N</div></div>
+            <div class="status-item"><div class="status-label">当前势能</div><div class="status-value v-white" id="u-ep">-3.97×10¹⁰J</div></div>
+        </div>
+        <div class="relation-box">
+            <div class="relation-title">势能与做功的动态关系</div>
+            <div class="relation-formula">W = Eₚ₁ - Eₚ₂ = -ΔEₚ</div>
+            <div class="relation-values">
+                <div class="rel-item"><div class="l">保守力做功 W</div><div class="v v-green" id="u-w">-1.98×10¹⁰J</div></div>
+                <div class="rel-item"><div class="l">势能变化 ΔEₚ</div><div class="v v-green" id="u-de">1.98×10¹⁰J</div></div>
+                <div class="rel-item"><div class="l">W + ΔEₚ</div><div class="v v-green" id="u-sum">0 J</div></div>
+            </div>
+        </div>
+        <div class="work-indicator">
+            <div class="work-bar work-pos" id="u-wpos"></div>
+            <div class="work-bar work-neg" id="u-wneg"></div>
+            <div class="work-center" id="u-msg">点击播放</div>
+        </div>
+        <div class="work-labels"><span style="color:#4ecdc4">← 势能增加</span><span style="color:#888">W = -ΔEₚ</span><span style="color:#ff6b6b">势能减少 →</span></div>
+    </div>
+
+    <!-- 弹性势能 -->
+    <div class="card">
+        <div class="card-title title-spring">〰 弹性势能 Eₚ = ½kx²</div>
+        <div class="formula-note">保守力 F = kx (指向平衡位置) | 零势能点：平衡位置 x = 0</div>
+        <div class="animation-area"><canvas class="animation-canvas" id="s-canvas"></canvas></div>
+        <div class="motion-state">
+            <div class="state-item"><span class="state-dot" id="s-dot-a"></span><span>起点 A (x₁)</span></div>
+            <div class="state-item"><span class="state-dot" id="s-dot-m"></span><span>运动中</span></div>
+            <div class="state-item"><span class="state-dot" id="s-dot-b"></span><span>终点 B (x₂)</span></div>
+        </div>
+        <div class="anim-controls">
+            <button class="anim-btn play" id="s-play">▶ 播放动画</button>
+            <button class="anim-btn reset" id="s-reset">↺ 重置</button>
+        </div>
+        <div class="control-row">
+            <div class="control-group">
+                <div class="control-label"><span>k (N/m)</span><span class="v" id="s-k-v">100</span></div>
+                <div class="slider-container"><div class="slider-fill fill-spring" id="s-k-fill" style="width:20%"></div></div>
+                <input type="range" id="s-k" min="10" max="500" step="5" value="100">
+            </div>
+            <div class="control-group">
+                <div class="control-label"><span>起点 x₁ (m)</span><span class="v" id="s-x1-v">0.80</span></div>
+                <div class="slider-container"><div class="slider-fill fill-spring" id="s-x1-fill" style="width:90%"></div></div>
+                <input type="range" id="s-x1" min="-1" max="1" step="0.01" value="0.8">
+            </div>
+        </div>
+        <div class="control-row">
+            <div class="control-group">
+                <div class="control-label"><span>终点 x₂ (m)</span><span class="v" id="s-x2-v">0.20</span></div>
+                <div class="slider-container"><div class="slider-fill fill-spring" id="s-x2-fill" style="width:60%"></div></div>
+                <input type="range" id="s-x2" min="-1" max="1" step="0.01" value="0.2">
+            </div>
+            <div class="control-group">
+                <div class="control-label"><span>当前位置 x</span><span class="v" id="s-x-v">0.80</span></div>
+                <div class="slider-container"><div class="slider-fill fill-spring" id="s-x-fill" style="width:90%"></div></div>
+                <input type="range" id="s-x" min="-1" max="1" step="0.01" value="0.8">
+            </div>
+        </div>
+        <div class="status-display">
+            <div class="status-item"><div class="status-label">初态势能 Eₚ₁</div><div class="status-value v-gold" id="s-ep1">32.0 J</div></div>
+            <div class="status-item"><div class="status-label">末态势能 Eₚ₂</div><div class="status-value v-gold" id="s-ep2">2.0 J</div></div>
+            <div class="status-item"><div class="status-label">弹力 F</div><div class="status-value" id="s-f">80 N</div></div>
+            <div class="status-item"><div class="status-label">当前势能</div><div class="status-value v-white" id="s-ep">32.0 J</div></div>
+        </div>
+        <div class="relation-box">
+            <div class="relation-title">势能与做功的动态关系</div>
+            <div class="relation-formula">W = Eₚ₁ - Eₚ₂ = -ΔEₚ</div>
+            <div class="relation-values">
+                <div class="rel-item"><div class="l">保守力做功 W</div><div class="v v-gold" id="s-w">30.0 J</div></div>
+                <div class="rel-item"><div class="l">势能变化 ΔEₚ</div><div class="v v-red" id="s-de">-30.0 J</div></div>
+                <div class="rel-item"><div class="l">W + ΔEₚ</div><div class="v v-green" id="s-sum">0 J</div></div>
+            </div>
+        </div>
+        <div class="work-indicator">
+            <div class="work-bar work-pos" id="s-wpos"></div>
+            <div class="work-bar work-neg" id="s-wneg"></div>
+            <div class="work-center" id="s-msg">点击播放</div>
+        </div>
+        <div class="work-labels"><span style="color:#4ecdc4">← 势能增加</span><span style="color:#888">W = -ΔEₚ</span><span style="color:#ff6b6b">势能减少 →</span></div>
+    </div>
+</div>
+
+<div class="info-section">
+    <h3>核心概念说明</h3>
+    <div class="info-grid">
+        <div class="info-box">
+            <h4>保守力做功与势能变化</h4>
+            <p><strong>W = -ΔEₚ = Eₚ(初) - Eₚ(末)</strong><br>保守力做正功(W>0)时，势能减少(ΔEₚ<0)<br>保守力做负功(W<0)时，势能增加(ΔEₚ>0)</p>
+        </div>
+        <div class="info-box">
+            <h4>保守力与势能梯度</h4>
+            <p><strong>F = -dEₚ/dx</strong><br>重力：向下（势能随高度降低）<br>引力：指向天体（势能随距离减小）<br>弹力：指向平衡位置（势能随位移减小）</p>
+        </div>
+        <div class="info-box">
+            <h4>机械能守恒</h4>
+            <p>在只有保守力做功的系统里：<br><strong>ΔEₖ + ΔEₚ = 0</strong><br>动能增加量等于势能减少量，能量守恒。</p>
+        </div>
+        <div class="info-box">
+            <h4>势能参考点的选择</h4>
+            <p>势能是相对量：<br>• 重力势能：通常取地面为零势能点<br>• 引力势能：必须取无穷远处为零势能点<br>• 弹性势能：取弹簧平衡位置为零势能点</p>
+        </div>
+    </div>
+</div>
+
+<script>
+const G=6.674e-11;
+function fs(n){if(Math.abs(n)<1e6&&Math.abs(n)>1e-2)return n.toFixed(2);const e=Math.floor(Math.log10(Math.abs(n)));const c=n/Math.pow(10,e);const s=['⁰','¹','²','³','⁴','⁵','⁶','⁷','⁸','⁹'];let es='';let x=Math.abs(e);while(x>0){es=s[x%10]+es;x=Math.floor(x/10)}if(e<0)es='⁻'+es;return c.toFixed(2)+'×10'+es}
+
+// 重力势能模拟
+class GS{
+    constructor(){this.m=5;this.g=9.8;this.h1=15;this.h2=5;this.h=15;this.ani=false;this.id=null}
+    init(){
+        document.getElementById('g-play').onclick=()=>this.start();
+        document.getElementById('g-reset').onclick=()=>this.reset();
+    }
+    update(m,g,h1,h2){this.m=m;this.g=g;this.h1=h1;this.h2=h2;if(!this.ani)this.h=h1;this.draw();this.refresh()}
+    refresh(){
+        const ep1=this.m*this.g*this.h1,ep2=this.m*this.g*this.h2,ep=this.m*this.g*this.h,f=this.m*this.g,w=ep1-ep2,de=ep2-ep1;
+        document.getElementById('g-ep1').textContent=fs(ep1)+' J';
+        document.getElementById('g-ep2').textContent=fs(ep2)+' J';
+        document.getElementById('g-ep').textContent=fs(ep)+' J';
+        document.getElementById('g-f').textContent=fs(f)+' N';
+        document.getElementById('g-w').textContent=fs(w)+' J';
+        document.getElementById('g-de').textContent=fs(de)+' J';
+        const wp=document.getElementById('g-wpos'),wn=document.getElementById('g-wneg'),mg=document.getElementById('g-msg');
+        const mw=this.m*this.g*20;
+        if(w>0){wp.style.width=Math.min(50,w/mw*50)+'%';wn.style.width='0%';mg.textContent='重力做正功，势能↓';mg.style.color='#ff6b6b'}
+        else if(w<0){wp.style.width='0%';wn.style.width=Math.min(50,-w/mw*50)+'%';mg.textContent='重力做负功，势能↑';mg.style.color='#4ecdc4'}
+        else{wp.style.width='0%';wn.style.width='0%';mg.textContent='静止';mg.style.color='#888'}
+        document.getElementById('g-dot-a').className='state-dot'+(Math.abs(this.h-this.h1)<0.1?' active':'');
+        document.getElementById('g-dot-b').className='state-dot'+(Math.abs(this.h-this.h2)<0.1?' active':'');
+        document.getElementById('g-dot-m').className='state-dot'+(this.ani?' moving':'');
+    }
+    start(){
+        if(this.ani)return;this.ani=true;const t=performance.now(),d=3000;
+        const an=()=>{const p=Math.min(1,(performance.now()-t)/d);const e=p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;this.h=this.h1+(this.h2-this.h1)*e;this.draw();this.refresh();if(p<1)this.id=requestAnimationFrame(an);else this.ani=false};
+        this.id=requestAnimationFrame(an);
+    }
+    reset(){if(this.id)cancelAnimationFrame(this.id);this.ani=false;this.h=this.h1;this.draw();this.refresh()}
+    draw(){
+        const c=document.getElementById('g-canvas'),ctx=c.getContext('2d'),w=c.width/dpr,h=c.height/dpr;ctx.clearRect(0,0,w,h);
+        ctx.fillStyle='#3a3a5a';ctx.fillRect(0,h-20,w,20);
+        ctx.fillStyle='rgba(255,255,255,0.4)';ctx.font='9px Arial';
+        for(let i=0;i<=20;i+=5){const y=h-20-(i/20)*(h-40);ctx.fillText(i+'m',w-32,y+3)}
+        const gy=h-20,oy=gy-(this.h/20)*(h-40),ox=50;
+        const y1=gy-(this.h1/20)*(h-40),y2=gy-(this.h2/20)*(h-40);
+        ctx.fillStyle='#4ecdc4';ctx.beginPath();ctx.arc(ox,y1,4,0,Math.PI*2);ctx.fill();ctx.fillText('A',ox+8,y1+3);
+        ctx.fillStyle='#ff6b6b';ctx.beginPath();ctx.arc(ox,y2,4,0,Math.PI*2);ctx.fill();ctx.fillText('B',ox+8,y2+3);
+        const al=Math.min(30,this.m*this.g/3);
+        ctx.strokeStyle='#ff6b6b';ctx.fillStyle='#ff6b6b';ctx.lineWidth=3;
+        ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(ox,oy+al);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(ox,oy+al+5);ctx.lineTo(ox-4,oy+al-1);ctx.lineTo(ox+4,oy+al-1);ctx.fill();
+        ctx.fillStyle='#4facfe';ctx.beginPath();ctx.arc(ox,oy,10,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#ffd700';ctx.font='bold 10px Arial';
+        ctx.fillText('h='+this.h.toFixed(1)+'m',ox+15,oy-5);
+        ctx.fillText('Eₚ='+fs(this.m*this.g*this.h)+'J',ox+15,oy+10);
+    }
+}
+
+// 引力势能模拟
+class US{
+    constructor(){this.M=5.97e24;this.m=1000;this.r1=10e6;this.r2=20e6;this.r=10e6;this.ani=false;this.id=null}
+    init(){
+        document.getElementById('u-play').onclick=()=>this.start();
+        document.getElementById('u-reset').onclick=()=>this.reset();
+    }
+    ep(r){return -G*this.M*this.m/r}
+    f(r){return G*this.M*this.m/(r*r)}
+    update(M,m,r1,r2){this.M=M*1e24;this.m=m;this.r1=r1*1e6;this.r2=r2*1e6;if(!this.ani)this.r=this.r1;this.draw();this.refresh()}
+    refresh(){
+        const ep1=this.ep(this.r1),ep2=this.ep(this.r2),ep=this.ep(this.r),f=this.f(this.r),w=ep1-ep2,de=ep2-ep1;
+        document.getElementById('u-ep1').textContent=fs(ep1)+' J';
+        document.getElementById('u-ep2').textContent=fs(ep2)+' J';
+        document.getElementById('u-ep').textContent=fs(ep)+' J';
+        document.getElementById('u-f').textContent=fs(f)+' N';
+        document.getElementById('u-w').textContent=fs(w)+' J';
+        document.getElementById('u-de').textContent=fs(de)+' J';
+        const wp=document.getElementById('u-wpos'),wn=document.getElementById('u-wneg'),mg=document.getElementById('u-msg');
+        const mw=Math.abs(ep1);
+        if(w>0){wp.style.width=Math.min(50,w/mw*50)+'%';wn.style.width='0%';mg.textContent='引力做正功，势能↓';mg.style.color='#ff6b6b'}
+        else{wp.style.width='0%';wn.style.width=Math.min(50,-w/mw*50)+'%';mg.textContent='引力做负功，势能↑';mg.style.color='#4ecdc4'}
+        document.getElementById('u-dot-a').className='state-dot'+(Math.abs(this.r-this.r1)<1e5?' active':'');
+        document.getElementById('u-dot-b').className='state-dot'+(Math.abs(this.r-this.r2)<1e5?' active':'');
+        document.getElementById('u-dot-m').className='state-dot'+(this.ani?' moving':'');
+    }
+    start(){
+        if(this.ani)return;this.ani=true;const t=performance.now(),d=4000;
+        const an=()=>{const p=Math.min(1,(performance.now()-t)/d);const e=p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;this.r=this.r1+(this.r2-this.r1)*e;this.draw();this.refresh();if(p<1)this.id=requestAnimationFrame(an);else this.ani=false};
+        this.id=requestAnimationFrame(an);
+    }
+    reset(){if(this.id)cancelAnimationFrame(this.id);this.ani=false;this.r=this.r1;this.draw();this.refresh()}
+    draw(){
+        const c=document.getElementById('u-canvas'),ctx=c.getContext('2d'),w=c.width/dpr,h=c.height/dpr;ctx.clearRect(0,0,w,h);
+        const cx=w/2,cy=h/2,er=22;
+        const gr=ctx.createRadialGradient(cx-7,cy-7,0,cx,cy,er);gr.addColorStop(0,'#4facfe');gr.addColorStop(1,'#667eea');
+        ctx.fillStyle=gr;ctx.beginPath();ctx.arc(cx,cy,er,0,Math.PI*2);ctx.fill();
+        const ds=1.5,bd=45,d=bd+(this.r/1e6)*ds,ox=cx,oy=cy-d;
+        ctx.strokeStyle='rgba(255,255,255,0.15)';ctx.setLineDash([3,3]);
+        ctx.beginPath();ctx.arc(cx,cy,d,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+        const d1=bd+(this.r1/1e6)*ds,d2=bd+(this.r2/1e6)*ds;
+        ctx.fillStyle='#4ecdc4';ctx.beginPath();ctx.arc(cx,cy-d1,4,0,Math.PI*2);ctx.fill();ctx.fillText('A',cx+8,cy-d1);
+        ctx.fillStyle='#ff6b6b';ctx.beginPath();ctx.arc(cx,cy-d2,4,0,Math.PI*2);ctx.fill();ctx.fillText('B',cx+8,cy-d2);
+        ctx.strokeStyle='rgba(245,87,108,0.4)';ctx.setLineDash([2,2]);
+        ctx.beginPath();ctx.moveTo(cx,cy+er);ctx.lineTo(ox,oy-8);ctx.stroke();ctx.setLineDash([]);
+        const al=Math.min(20,Math.log10(this.f(this.r)+1)*4);
+        ctx.strokeStyle='#ff6b6b';ctx.fillStyle='#ff6b6b';ctx.lineWidth=3;
+        ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(ox,oy+al);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(ox,oy+al+4);ctx.lineTo(ox-3,oy+al);ctx.lineTo(ox+3,oy+al);ctx.fill();
+        ctx.fillStyle='#f5576c';ctx.beginPath();ctx.arc(ox,oy,8,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#ffd700';ctx.font='bold 9px Arial';
+        ctx.fillText('r='+(this.r/1e6).toFixed(1)+'×10⁶m',ox+12,oy-3);
+        ctx.fillText('Eₚ='+fs(this.ep(this.r))+'J',ox+12,oy+8);
+    }
+}
+
+// 弹性势能模拟
+class SS{
+    constructor(){this.k=100;this.x1=0.8;this.x2=0.2;this.x=0.8;this.ani=false;this.id=null}
+    init(){
+        document.getElementById('s-play').onclick=()=>this.start();
+        document.getElementById('s-reset').onclick=()=>this.reset();
+    }
+    ep(x){return 0.5*this.k*x*x}
+    f(x){return this.k*Math.abs(x)}
+    update(k,x1,x2,x){this.k=k;this.x1=x1;this.x2=x2;if(x!==undefined)this.x=x;this.draw();this.refresh()}
+    refresh(){
+        const ep1=this.ep(this.x1),ep2=this.ep(this.x2),ep=this.ep(this.x),f=this.f(this.x),w=ep1-ep2,de=ep2-ep1;
+        document.getElementById('s-ep1').textContent=ep1.toFixed(1)+' J';
+        document.getElementById('s-ep2').textContent=ep2.toFixed(1)+' J';
+        document.getElementById('s-ep').textContent=ep.toFixed(1)+' J';
+        document.getElementById('s-f').textContent=f.toFixed(1)+' N';
+        document.getElementById('s-w').textContent=w.toFixed(1)+' J';
+        document.getElementById('s-de').textContent=de.toFixed(1)+' J';
+        const wp=document.getElementById('s-wpos'),wn=document.getElementById('s-wneg'),mg=document.getElementById('s-msg');
+        const mw=0.5*this.k;
+        if(w>0){wp.style.width=Math.min(50,w/mw*50)+'%';wn.style.width='0%';mg.textContent='弹力做正功，势能↓';mg.style.color='#ff6b6b'}
+        else{wp.style.width='0%';wn.style.width=Math.min(50,-w/mw*50)+'%';mg.textContent='弹力做负功，势能↑';mg.style.color='#4ecdc4'}
+        document.getElementById('s-dot-a').className='state-dot'+(Math.abs(this.x-this.x1)<0.02?' active':'');
+        document.getElementById('s-dot-b').className='state-dot'+(Math.abs(this.x-this.x2)<0.02?' active':'');
+        document.getElementById('s-dot-m').className='state-dot'+(this.ani?' moving':'');
+    }
+    start(){
+        if(this.ani)return;this.ani=true;const t=performance.now(),d=3000;
+        const an=()=>{const p=Math.min(1,(performance.now()-t)/d);const e=p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;this.x=this.x1+(this.x2-this.x1)*e;this.draw();this.refresh();if(p<1)this.id=requestAnimationFrame(an);else this.ani=false};
+        this.id=requestAnimationFrame(an);
+    }
+    reset(){if(this.id)cancelAnimationFrame(this.id);this.ani=false;this.x=this.x1;this.draw();this.refresh()}
+    draw(){
+        const c=document.getElementById('s-canvas'),ctx=c.getContext('2d'),w=c.width/dpr,h=c.height/dpr;ctx.clearRect(0,0,w,h);
+        const wx=25,cy=h/2,eq=w*0.45,se=eq+this.x*100;
+        ctx.fillStyle='#4a4a6a';ctx.fillRect(0,cy-45,wx+3,90);
+        ctx.strokeStyle='#38ef7d';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(wx+2,cy);
+        const cl=8;for(let i=0;i<=cl;i++){const px=wx+2+((se-wx-2)*i/cl),py=cy+(i%2===0?-12:12);ctx.lineTo(px,i===0||i===cl?cy:py)}ctx.stroke();
+        ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.setLineDash([3,3]);
+        ctx.beginPath();ctx.moveTo(eq,cy-35);ctx.lineTo(eq,cy+35);ctx.stroke();ctx.setLineDash([]);
+        const x1p=eq+this.x1*100,x2p=eq+this.x2*100;
+        ctx.fillStyle='#4ecdc4';ctx.beginPath();ctx.arc(x1p,cy,4,0,Math.PI*2);ctx.fill();ctx.fillText('A',x1p+8,cy-8);
+        ctx.fillStyle='#ff6b6b';ctx.beginPath();ctx.arc(x2p,cy,4,0,Math.PI*2);ctx.fill();ctx.fillText('B',x2p+8,cy-8);
+        const al=Math.min(20,this.f(this.x)/5),fd=this.x>0?-1:1;
+        ctx.strokeStyle='#ff6b6b';ctx.fillStyle='#ff6b6b';ctx.lineWidth=3;
+        ctx.beginPath();ctx.moveTo(se+8,cy);ctx.lineTo(se+8+al*fd,cy);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(se+8+al*fd,cy);ctx.lineTo(se+8+al*fd-4*fd,cy-3);ctx.lineTo(se+8+al*fd-4*fd,cy+3);ctx.fill();
+        ctx.fillStyle='#38ef7d';ctx.beginPath();ctx.roundRect(se-5,cy-12,16,24,3);ctx.fill();
+        ctx.fillStyle='#ffd700';ctx.font='bold 9px Arial';
+        ctx.fillText('x='+this.x.toFixed(2)+'m',se+12,cy-8);
+        ctx.fillText('Eₚ='+this.ep(this.x).toFixed(1)+'J',se+12,cy+5);
+    }
+}
+
+// 初始化
+const dpr=window.devicePixelRatio||1;
+const gs=new GS(),us=new US(),ss=new SS();
+
+function sz(){
+    document.querySelectorAll('.animation-canvas').forEach(c=>{
+        const r=c.parentElement.getBoundingClientRect();
+        c.width=r.width*dpr;c.height=r.height*dpr;
+        c.style.width=r.width+'px';c.style.height=r.height+'px';
+        c.getContext('2d').scale(dpr,dpr);
+    })}
+function setup(id,vid,fill,min,max,fmt){
+    const s=document.getElementById(id),v=document.getElementById(vid),f=document.getElementById(fill);
+    s.addEventListener('input',()=>{const n=parseFloat(s.value);v.textContent=fmt(n);f.style.width=((n-min)/(max-min))*100+'%'});
+}
+setup('g-m','g-m-v','g-m-fill',1,10,v=>v.toFixed(1));
+setup('g-g','g-g-v','g-g-fill',1,10,v=>v.toFixed(1));
+setup('g-h1','g-h1-v','g-h1-fill',0,20,v=>v.toFixed(1));
+setup('g-h2','g-h2-v','g-h2-fill',0,20,v=>v.toFixed(1));
+setup('u-M','u-M-v','u-M-fill',0.5,200,v=>v.toFixed(2));
+setup('u-m','u-m-v','u-m-fill',100,10000,v=>v.toFixed(0));
+setup('u-r1','u-r1-v','u-r1-fill',6.37,100,v=>v.toFixed(1));
+setup('u-r2','u-r2-v','u-r2-fill',6.37,100,v=>v.toFixed(1));
+setup('s-k','s-k-v','s-k-fill',10,500,v=>v.toFixed(0));
+setup('s-x1','s-x1-v','s-x1-fill',-1,1,v=>v.toFixed(2));
+setup('s-x2','s-x2-v','s-x2-fill',-1,1,v=>v.toFixed(2));
+setup('s-x','s-x-v','s-x-fill',-1,1,v=>v.toFixed(2));
+
+document.getElementById('g-m').addEventListener('input',e=>gs.update(parseFloat(e.target.value),gs.g,gs.h1,gs.h2));
+document.getElementById('g-g').addEventListener('input',e=>gs.update(gs.m,parseFloat(e.target.value),gs.h1,gs.h2));
+document.getElementById('g-h1').addEventListener('input',e=>gs.update(gs.m,gs.g,parseFloat(e.target.value),gs.h2));
+document.getElementById('g-h2').addEventListener('input',e=>gs.update(gs.m,gs.g,gs.h1,parseFloat(e.target.value)));
+document.getElementById('u-M').addEventListener('input',e=>us.update(parseFloat(e.target.value),us.m,us.r1/1e6,us.r2/1e6));
+document.getElementById('u-m').addEventListener('input',e=>us.update(us.M/1e24,parseFloat(e.target.value),us.r1/1e6,us.r2/1e6));
+document.getElementById('u-r1').addEventListener('input',e=>us.update(us.M/1e24,us.m,parseFloat(e.target.value),us.r2/1e6));
+document.getElementById('u-r2').addEventListener('input',e=>us.update(us.M/1e24,us.m,us.r1/1e6,parseFloat(e.target.value)));
+document.getElementById('s-k').addEventListener('input',e=>ss.update(parseFloat(e.target.value),ss.x1,ss.x2));
+document.getElementById('s-x1').addEventListener('input',e=>ss.update(ss.k,parseFloat(e.target.value),ss.x2));
+document.getElementById('s-x2').addEventListener('input',e=>ss.update(ss.k,ss.x1,parseFloat(e.target.value)));
+document.getElementById('s-x').addEventListener('input',e=>ss.update(ss.k,ss.x1,ss.x2,parseFloat(e.target.value)));
+
+gs.init();us.init();ss.init();
+
+function init(){sz();gs.update(5,9.8,15,5);us.update(5.97,1000,10,20);ss.update(100,0.8,0.2,0.8)}
+window.addEventListener('resize',()=>{sz();gs.draw();us.draw();ss.draw()});
+window.addEventListener('load',init);
+</script>
+</body>
+</html>

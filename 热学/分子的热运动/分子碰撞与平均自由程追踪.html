@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>气体分子的碰撞与平均自由程</title>
+    <script>
+        MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: {
+                fontCache: 'global'
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-light: #64748b;
+            --tracked-color: #ef4444;
+            --normal-color: #94a3b8;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 30px 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 1300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .header {
+            text-align: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 26px;
+        }
+        .header p {
+            margin: 0;
+            color: var(--text-light);
+            font-size: 15px;
+        }
+        
+        /* 核心左右分栏结构 */
+        .main-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            align-items: flex-start;
+        }
+        
+        /* 左侧面板：控制区与公式区 */
+        .left-panel {
+            flex: 0 0 350px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        /* 右侧面板：图表区 */
+        .right-panel {
+            flex: 1;
+            min-width: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .controls {
+            padding: 20px;
+            background-color: #f1f5f9;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        label { font-weight: 600; font-size: 14px; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .btn-reset {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background 0.2s;
+            margin-top: 5px;
+        }
+        .btn-reset:hover { background-color: #1d4ed8; }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            max-height: 550px;
+            border: 2px solid #cbd5e1;
+            border-radius: 8px;
+            background-color: #f8fafc; /* 微弱的背景色让白色的高亮更明显 */
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            margin-top: 15px;
+            font-size: 14px;
+            padding: 15px;
+            background-color: #f1f5f9;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-weight: 500;}
+        .color-box { width: 14px; height: 14px; border-radius: 50%; } /* 改成圆形 */
+        
+        .math-section {
+            padding: 20px;
+            background-color: #fafafa;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        .formulas-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .formula-card {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            text-align: center;
+            border-left: 4px solid var(--primary);
+        }
+        .card-tracked { border-left-color: var(--tracked-color); }
+        
+        .formula-title {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .val-display {
+            font-size: 20px;
+            font-weight: bold;
+            margin-top: 5px;
+            color: var(--text-main);
+        }
+        .unit { font-size: 12px; color: var(--text-light); font-weight: normal; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>理想气体分子碰撞与平均自由程追踪</h1>
+        <p>调整分子密度和直径，观察红色分子的“布朗运动”轨迹，实时验证宏观公式定律</p>
+    </div>
+
+    <div class="main-content">
+        <div class="left-panel">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="densitySlider">容器内分子总数 N (反映分子数密度 n): <span id="densityVal" style="color:var(--primary);">150</span></label>
+                    <input type="range" id="densitySlider" min="20" max="300" value="150" step="10">
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label for="radiusSlider">分子直径 d: <span id="radiusVal" style="color:var(--primary);">6</span> (相对单位)</label>
+                    <input type="range" id="radiusSlider" min="3" max="12" value="6" step="1">
+                </div>
+                <button class="btn-reset" onclick="resetSimulation()">清空轨迹并重新统计</button>
+            </div>
+
+            <div class="math-section">
+                <h3 style="margin:0; font-size:15px; text-align:center; color: var(--text-main);">实时统计 (针对红色分子)</h3>
+                <div class="formulas-grid">
+                    <div class="formula-card card-tracked">
+                        <div class="formula-title" style="color: var(--tracked-color);">累计碰撞次数 $Z$</div>
+                        <div class="val-display" id="statZ">0 <span class="unit">次</span></div>
+                    </div>
+                    <div class="formula-card card-tracked">
+                        <div class="formula-title" style="color: var(--tracked-color);">累计移动路程 $S$</div>
+                        <div class="val-display" id="statS">0.0 <span class="unit">单位</span></div>
+                    </div>
+                    <div class="formula-card" style="border-left-color: #8b5cf6;">
+                        <div class="formula-title" style="color: #8b5cf6;">模拟平均自由程 $\bar{\lambda} = S / Z$</div>
+                        <div>$$\text{理论公式: } \bar{\lambda} = \frac{1}{\sqrt{2}\pi d^2 n}$$</div>
+                        <div class="val-display" style="color: #8b5cf6;" id="statLambda">0.0 <span class="unit">单位/次</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <canvas id="simCanvas" width="800" height="550"></canvas>
+            <div class="legend">
+                <div class="legend-item"><div class="color-box" style="background: rgba(148, 163, 184, 0.5);"></div> 背景分子群</div>
+                <div class="legend-item"><div class="color-box" style="background: var(--tracked-color);"></div> 追踪分子</div>
+                <div class="legend-item" style="gap: 2px;">
+                    <div style="width: 20px; height: 3px; background: var(--tracked-color);"></div>
+                    <span style="margin-left: 4px;">曲折轨迹 (布朗运动)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 物理参数与状态
+    let numParticles = parseInt(document.getElementById('densitySlider').value);
+    let particleRadius = parseFloat(document.getElementById('radiusSlider').value);
+    const baseSpeed = 2.5; // 分子初始运动速率
+    
+    let particles = [];
+    let pathHistory = [];
+    const maxPathLength = 300; // 轨迹保留的最大折点数
+    
+    // 统计数据
+    let stats = {
+        collisions: 0,
+        distance: 0,
+        lastX: 0,
+        lastY: 0
+    };
+
+    class Particle {
+        constructor(x, y, r, isTracked = false) {
+            this.x = x;
+            this.y = y;
+            this.r = r;
+            this.isTracked = isTracked;
+            
+            // 随机生成一个方向的恒定初速度
+            const angle = Math.random() * Math.PI * 2;
+            this.vx = Math.cos(angle) * baseSpeed;
+            this.vy = Math.sin(angle) * baseSpeed;
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+            if (this.isTracked) {
+                ctx.fillStyle = '#ef4444'; // 红色
+                // 给追踪分子加一个高亮光晕
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ef4444';
+            } else {
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.6)'; // 半透明蓝色/灰色
+                ctx.shadowBlur = 0;
+            }
+            ctx.fill();
+            ctx.shadowBlur = 0; // 重置阴影
+        }
+
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+
+            // 碰壁反弹 (不计入分子间碰撞次数)
+            if (this.x - this.r < 0) { this.x = this.r; this.vx *= -1; }
+            if (this.x + this.r > canvas.width) { this.x = canvas.width - this.r; this.vx *= -1; }
+            if (this.y - this.r < 0) { this.y = this.r; this.vy *= -1; }
+            if (this.y + this.r > canvas.height) { this.y = canvas.height - this.r; this.vy *= -1; }
+        }
+    }
+
+    function initSimulation() {
+        particles = [];
+        pathHistory = [];
+        stats.collisions = 0;
+        stats.distance = 0;
+
+        // 初始化天选追踪分子 (放在画面中央)
+        const trackedParticle = new Particle(canvas.width / 2, canvas.height / 2, particleRadius, true);
+        particles.push(trackedParticle);
+        stats.lastX = trackedParticle.x;
+        stats.lastY = trackedParticle.y;
+        pathHistory.push({x: trackedParticle.x, y: trackedParticle.y});
+
+        // 初始化背景分子 (随机位置，避免重叠)
+        for (let i = 1; i < numParticles; i++) {
+            let x, y, isOverlapping;
+            let attempts = 0;
+            do {
+                isOverlapping = false;
+                x = Math.random() * (canvas.width - 2 * particleRadius) + particleRadius;
+                y = Math.random() * (canvas.height - 2 * particleRadius) + particleRadius;
+                
+                // 检查是否与已生成的分子重叠
+                for (let j = 0; j < particles.length; j++) {
+                    const dx = x - particles[j].x;
+                    const dy = y - particles[j].y;
+                    if (Math.sqrt(dx*dx + dy*dy) < particleRadius * 2) {
+                        isOverlapping = true;
+                        break;
+                    }
+                }
+                attempts++;
+            } while (isOverlapping && attempts < 100);
+            
+            particles.push(new Particle(x, y, particleRadius));
+        }
+        
+        updateUI();
+    }
+
+    // 二维弹性碰撞处理
+    function handleCollisions() {
+        for (let i = 0; i < particles.length; i++) {
+            for (let j = i + 1; j < particles.length; j++) {
+                const p1 = particles[i];
+                const p2 = particles[j];
+                
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const minDist = p1.r + p2.r;
+
+                // 发生接触
+                if (dist < minDist) {
+                    // 计算碰撞法向量
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+
+                    // 计算相对速度
+                    const vx = p2.vx - p1.vx;
+                    const vy = p2.vy - p1.vy;
+
+                    // 沿着法线方向的速度分量
+                    const vn = vx * nx + vy * ny;
+
+                    // 如果两球正在分离，则不处理
+                    if (vn > 0) continue;
+
+                    // 质量相同情况下的完全弹性碰撞：沿着连心线交换速度分量
+                    // 冲量计算
+                    const impulse = -vn; 
+
+                    p1.vx -= impulse * nx;
+                    p1.vy -= impulse * ny;
+                    p2.vx += impulse * nx;
+                    p2.vy += impulse * ny;
+
+                    // 位置修正：防止小球重叠粘连
+                    const overlap = minDist - dist;
+                    p1.x -= (overlap / 2) * nx;
+                    p1.y -= (overlap / 2) * ny;
+                    p2.x += (overlap / 2) * nx;
+                    p2.y += (overlap / 2) * ny;
+
+                    // 如果涉及追踪分子，记录一次碰撞
+                    if (p1.isTracked || p2.isTracked) {
+                        stats.collisions++;
+                        const trackedP = p1.isTracked ? p1 : p2;
+                        // 在碰撞点记录轨迹折点
+                        pathHistory.push({x: trackedP.x, y: trackedP.y});
+                        if (pathHistory.length > maxPathLength) {
+                            pathHistory.shift();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function updateUI() {
+        document.getElementById('statZ').innerText = stats.collisions + " 次";
+        document.getElementById('statS').innerHTML = stats.distance.toFixed(0) + " <span class='unit'>单位</span>";
+        
+        let lambda = stats.collisions === 0 ? 0 : (stats.distance / stats.collisions);
+        document.getElementById('statLambda').innerHTML = lambda.toFixed(2) + " <span class='unit'>单位/次</span>";
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 物理更新
+        handleCollisions();
+        
+        // 绘制轨迹线 (先画轨迹，再画球，使得球在轨迹上方)
+        if (pathHistory.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(pathHistory[0].x, pathHistory[0].y);
+            for (let i = 1; i < pathHistory.length; i++) {
+                ctx.lineTo(pathHistory[i].x, pathHistory[i].y);
+            }
+            // 连接当前运动位置
+            ctx.lineTo(particles[0].x, particles[0].y);
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)'; // 红色带透明度
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // 绘制并更新所有分子
+        for (let p of particles) {
+            p.update();
+            p.draw();
+        }
+
+        // 累加追踪分子的移动路程
+        const tp = particles[0];
+        const dx = tp.x - stats.lastX;
+        const dy = tp.y - stats.lastY;
+        stats.distance += Math.sqrt(dx*dx + dy*dy);
+        stats.lastX = tp.x;
+        stats.lastY = tp.y;
+
+        // 降低UI更新频率以节省性能
+        if (Math.random() < 0.1) updateUI();
+
+        requestAnimationFrame(animate);
+    }
+
+    // 事件监听
+    document.getElementById('densitySlider').addEventListener('input', (e) => {
+        numParticles = parseInt(e.target.value);
+        document.getElementById('densityVal').innerText = numParticles;
+        initSimulation(); // 改变数量时重新生成
+    });
+
+    document.getElementById('radiusSlider').addEventListener('input', (e) => {
+        particleRadius = parseFloat(e.target.value);
+        document.getElementById('radiusVal').innerText = particleRadius;
+        // 动态更新所有分子的半径
+        for (let p of particles) {
+            p.r = particleRadius;
+        }
+        // 为了防止突然放大导致的严重重叠，可以选择重新初始化，或者清空轨迹
+        stats.collisions = 0;
+        stats.distance = 0;
+        pathHistory = [{x: particles[0].x, y: particles[0].y}];
+    });
+
+    // 暴露给按钮的全局函数
+    window.resetSimulation = function() {
+        initSimulation();
+    };
+
+    // 启动模拟
+    initSimulation();
+    animate();
+
+</script>
+</body>
+</html>

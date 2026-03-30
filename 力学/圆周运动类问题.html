@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>圆周运动向心力模拟</title>
+    <style>
+        body { display: flex; flex-direction: row; align-items: flex-start; background-color: #f8f9fa; font-family: system-ui, sans-serif; padding: 30px; gap: 30px; }
+        #control-panel { width: 280px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .slider-group { margin-bottom: 20px; }
+        label { display: block; font-size: 14px; margin-bottom: 8px; color: #333; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        .value-box { font-weight: bold; color: #007bff; float: right; }
+        
+        #result-panel { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: center; }
+        .force-val { font-size: 24px; font-family: 'Consolas', monospace; color: #e74c3c; }
+        
+        canvas { background: white; border-radius: 12px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+
+    <div id="control-panel">
+        <h3 style="margin-top:0">参数调节</h3>
+        
+        <div class="slider-group">
+            <label>线速度 (v): <span class="value-box" id="vTxt">0.075</span> m/s</label>
+            <input type="range" id="vSlider" min="0.05" max="0.1" step="0.001" value="0.075">
+        </div>
+
+        <div class="slider-group">
+            <label>质量 (m): <span class="value-box" id="mTxt">0.25</span> kg</label>
+            <input type="range" id="mSlider" min="0" max="0.5" step="0.01" value="0.25">
+        </div>
+
+        <div class="slider-group">
+            <label>半径 (r): <span class="value-box" id="rTxt">150</span> px</label>
+            <input type="range" id="rSlider" min="50" max="220" step="1" value="150">
+        </div>
+
+        <div id="result-panel">
+            <div style="font-size: 12px; opacity: 0.8;">实时向心力 (F_c)</div>
+            <div class="force-val"><span id="fTxt">0.000</span> N</div>
+        </div>
+    </div>
+
+    <canvas id="simCanvas" width="600" height="600"></canvas>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 状态量
+    let angle = 0;
+
+    function update() {
+        const v = parseFloat(document.getElementById('vSlider').value);
+        const m = parseFloat(document.getElementById('mSlider').value);
+        const rPx = parseFloat(document.getElementById('rSlider').value);
+        
+        // 为了视觉效果，我们将 px 映射为虚拟米进行力学计算
+        // 假设 100px = 1m
+        const rMeters = rPx / 100;
+        
+        // 计算向心力 Fc = m * v^2 / r
+        const force = (m * v * v) / rMeters;
+
+        // 更新 UI
+        document.getElementById('vTxt').innerText = v.toFixed(3);
+        document.getElementById('mTxt').innerText = m.toFixed(2);
+        document.getElementById('rTxt').innerText = rPx;
+        document.getElementById('fTxt').innerText = force.toFixed(4);
+
+        // 更新角度 (ω = v / r)
+        // 增加了一个 50 倍的倍率使动画在肉眼看来较平滑
+        const omega = (v / rMeters) * 50;
+        angle += omega * 0.016; 
+
+        draw(rPx, m, force);
+        requestAnimationFrame(update);
+    }
+
+    function draw(r, m, force) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+
+        // 1. 绘制轨道
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.strokeStyle = '#eee';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 2. 绘制圆心
+        ctx.fillStyle = '#333';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 计算小球位置
+        const bx = cx + r * Math.cos(angle);
+        const by = cy + r * Math.sin(angle);
+
+        // 3. 绘制向心力矢量箭头 (红色)
+        // 箭头长度随力的大小缩放
+        const arrowLen = Math.min(force * 5000, r - 10); 
+        if(arrowLen > 2) {
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            // 指向圆心
+            const tx = bx - arrowLen * Math.cos(angle);
+            const ty = by - arrowLen * Math.sin(angle);
+            ctx.lineTo(tx, ty);
+            ctx.stroke();
+
+            // 箭头帽
+            const head = 8;
+            ctx.beginPath();
+            ctx.moveTo(tx, ty);
+            ctx.lineTo(tx + head * Math.cos(angle - 0.5), ty + head * Math.sin(angle - 0.5));
+            ctx.lineTo(tx + head * Math.cos(angle + 0.5), ty + head * Math.sin(angle + 0.5));
+            ctx.fillStyle = '#e74c3c';
+            ctx.fill();
+        }
+
+        // 4. 绘制小球
+        ctx.beginPath();
+        ctx.arc(bx, by, 10 + m * 20, 0, Math.PI * 2);
+        ctx.fillStyle = '#3498db';
+        ctx.fill();
+        ctx.strokeStyle = '#2980b9';
+        ctx.stroke();
+    }
+
+    update();
+</script>
+</body>
+</html>

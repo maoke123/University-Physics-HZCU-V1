@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>麦克斯韦速率分布动态演示</title>
+    <script>
+        MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: {
+                fontCache: 'global'
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-light: #64748b;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 30px 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 1300px; /* 加宽容器以适应左右结构 */
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .header {
+            text-align: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 26px;
+        }
+        .header p {
+            margin: 0;
+            color: var(--text-light);
+            font-size: 15px;
+        }
+        
+        /* 核心左右分栏结构 */
+        .main-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            align-items: flex-start;
+        }
+        
+        /* 左侧面板：控制区与公式区 */
+        .left-panel {
+            flex: 0 0 350px; /* 固定宽度 */
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        /* 右侧面板：图表区 */
+        .right-panel {
+            flex: 1; /* 占据剩余所有空间 */
+            min-width: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .controls {
+            padding: 20px;
+            background-color: #f1f5f9;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        label { font-weight: 600; font-size: 14px; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        select { padding: 8px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 14px; }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            max-height: 550px; /* 限制最高高度 */
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background-color: #ffffff;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            margin-top: 15px;
+            font-size: 14px;
+            padding: 15px;
+            background-color: #f8fafc;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-weight: 500;}
+        .color-box { width: 14px; height: 14px; border-radius: 3px; }
+        
+        .math-section {
+            padding: 20px;
+            background-color: #fafafa;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        .formulas-grid {
+            display: grid;
+            grid-template-columns: 1fr; /* 改为单列纵向排列 */
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .formula-card {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            text-align: center;
+            border-left: 4px solid transparent;
+        }
+        .formula-title {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        .val-display {
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        
+        /* 针对不同卡片设置左侧边框颜色以呼应图表 */
+        .card-vp { border-left-color: #ef4444; }
+        .card-vmean { border-left-color: #10b981; }
+        .card-vrms { border-left-color: #8b5cf6; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>麦克斯韦速率分布函数动态演示</h1>
+        <p>固定坐标轴：拖动温度滑块，观察概率密度曲线如何“变矮、变宽”</p>
+    </div>
+
+    <div class="main-content">
+        <div class="left-panel">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="gasSelect">选择气体类型 (改变摩尔质量 M)</label>
+                    <select id="gasSelect">
+                        <option value="0.028013" selected>氮气 N₂ (M ≈ 28.0 g/mol)</option>
+                        <option value="0.031999">氧气 O₂ (M ≈ 32.0 g/mol)</option>
+                        <option value="0.04401">二氧化碳 CO₂ (M ≈ 44.0 g/mol)</option>
+                        <option value="0.004003">氦气 He (M ≈ 4.0 g/mol)</option>
+                    </select>
+                </div>
+                <div class="control-group" style="margin-top: 10px;">
+                    <label for="tempSlider">绝对温度 T: <span id="tempValue" style="color:#2563eb; font-weight:bold; font-size: 16px;">300</span> K</label>
+                    <input type="range" id="tempSlider" min="100" max="1000" value="300" step="10">
+                </div>
+            </div>
+
+            <div class="math-section">
+                <h3 style="margin:0; font-size:15px; text-align:center; color: var(--text-main);">三种特征速率统计平均值</h3>
+                <div class="formulas-grid">
+                    <div class="formula-card card-vp">
+                        <div class="formula-title" style="color: #ef4444;">最概然速率</div>
+                        <div>$$v_p = \sqrt{\frac{2RT}{M}}$$</div>
+                        <div class="val-display" style="color: #ef4444;" id="vpVal">0 m/s</div>
+                    </div>
+                    <div class="formula-card card-vmean">
+                        <div class="formula-title" style="color: #10b981;">平均速率</div>
+                        <div>$$\bar{v} = \sqrt{\frac{8RT}{\pi M}}$$</div>
+                        <div class="val-display" style="color: #10b981;" id="vmeanVal">0 m/s</div>
+                    </div>
+                    <div class="formula-card card-vrms">
+                        <div class="formula-title" style="color: #8b5cf6;">方均根速率</div>
+                        <div>$$\sqrt{\overline{v^2}} = \sqrt{\frac{3RT}{M}}$$</div>
+                        <div class="val-display" style="color: #8b5cf6;" id="vrmsVal">0 m/s</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <canvas id="maxwellCanvas" width="800" height="550"></canvas>
+
+            <div class="legend">
+                <div class="legend-item"><div class="color-box" style="background: #2563eb;"></div> 概率密度 f(v)</div>
+                <div class="legend-item"><div class="color-box" style="background: #ef4444;"></div> $v_p$</div>
+                <div class="legend-item"><div class="color-box" style="background: #10b981;"></div> $\bar{v}$</div>
+                <div class="legend-item"><div class="color-box" style="background: #8b5cf6;"></div> $\sqrt{\overline{v^2}}$</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('maxwellCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    const R = 8.314; 
+    let T = parseFloat(document.getElementById('tempSlider').value);
+    let M = parseFloat(document.getElementById('gasSelect').value); 
+    
+    const minT = 100;
+    const maxT = 1000;
+
+    // 增加了内部绘图的边距，让图表在更大的画布上显得更舒展
+    const margin = { top: 50, right: 40, bottom: 50, left: 90 };
+    let width = canvas.width - margin.left - margin.right;
+    let height = canvas.height - margin.top - margin.bottom;
+
+    let plotMaxV = 0;
+    let plotMaxY = 0;
+
+    function f(v, M, T) {
+        const factor1 = 4 * Math.PI;
+        const factor2 = Math.pow(M / (2 * Math.PI * R * T), 1.5);
+        const factor3 = v * v;
+        const factor4 = Math.exp(-(M * v * v) / (2 * R * T));
+        return factor1 * factor2 * factor3 * factor4;
+    }
+
+    function updateCoordinateSystem() {
+        const v_rms_max = Math.sqrt((3 * R * maxT) / M);
+        plotMaxV = v_rms_max * 2.5;
+        
+        const vp_min = Math.sqrt((2 * R * minT) / M);
+        plotMaxY = f(vp_min, M, minT) * 1.1;
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const vp = Math.sqrt((2 * R * T) / M);
+        const v_mean = Math.sqrt((8 * R * T) / (Math.PI * M));
+        const v_rms = Math.sqrt((3 * R * T) / M);
+        
+        document.getElementById('vpVal').innerText = vp.toFixed(1) + " m/s";
+        document.getElementById('vmeanVal').innerText = v_mean.toFixed(1) + " m/s";
+        document.getElementById('vrmsVal').innerText = v_rms.toFixed(1) + " m/s";
+
+        const mapX = (v) => margin.left + (v / plotMaxV) * width;
+        const mapY = (val) => margin.top + height - (val / plotMaxY) * height;
+
+        // 绘制坐标轴
+        ctx.beginPath();
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 2;
+        ctx.moveTo(margin.left, margin.top - 20);
+        ctx.lineTo(margin.left, margin.top + height);
+        ctx.lineTo(margin.left + width + 20, margin.top + height);
+        ctx.stroke();
+
+        // X轴刻度
+        ctx.fillStyle = '#64748b';
+        ctx.font = '14px sans-serif'; // 字号稍微调大
+        ctx.textAlign = 'center';
+        for(let i = 0; i <= 5; i++) {
+            let vTick = (plotMaxV / 5) * i;
+            let xPos = mapX(vTick);
+            ctx.fillText(vTick.toFixed(0), xPos, margin.top + height + 25);
+            ctx.beginPath();
+            ctx.moveTo(xPos, margin.top + height);
+            ctx.lineTo(xPos, margin.top + height + 6);
+            ctx.stroke();
+        }
+        ctx.fillText('速率 v (m/s)', margin.left + width - 10, margin.top + height + 40);
+        
+        // Y轴标识
+        ctx.textAlign = 'right';
+        ctx.fillText('f(v)', margin.left - 15, margin.top - 10);
+
+        // 绘制概率分布曲线
+        ctx.beginPath();
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 4; // 曲线变粗一点，视觉冲击力更强
+        for(let v = 0; v <= plotMaxV; v += plotMaxV/500) {
+            let x = mapX(v);
+            let y = mapY(f(v, M, T));
+            if(v === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // 绘制特征速率垂直线
+        function drawVerticalLine(v, color) {
+            let x = mapX(v);
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 6]);
+            ctx.moveTo(x, margin.top + height);
+            ctx.lineTo(x, mapY(f(v, M, T)));
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        drawVerticalLine(vp, '#ef4444');
+        drawVerticalLine(v_mean, '#10b981');
+        drawVerticalLine(v_rms, '#8b5cf6');
+    }
+
+    document.getElementById('tempSlider').addEventListener('input', (e) => {
+        T = parseFloat(e.target.value);
+        document.getElementById('tempValue').innerText = T;
+        draw();
+    });
+
+    document.getElementById('gasSelect').addEventListener('change', (e) => {
+        M = parseFloat(e.target.value);
+        updateCoordinateSystem();
+        draw();
+    });
+
+    updateCoordinateSystem();
+    draw();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>动能定理验证：滑块碰撞实验</title>
+    <style>
+        body { display: flex; flex-direction: column; align-items: center; background: #f8fafc; font-family: 'Segoe UI', system-ui, sans-serif; padding: 20px; }
+        .experiment-layout { display: flex; gap: 20px; max-width: 1100px; }
+        #control-panel { width: 320px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .slider-group { margin-bottom: 15px; padding: 10px; border: 1px solid #edf2f7; border-radius: 8px; }
+        h4 { margin: 0 0 10px 0; color: #2d3748; }
+        label { display: block; font-size: 13px; color: #718096; margin-bottom: 5px; }
+        input[type=range] { width: 100%; }
+        .val { font-weight: bold; color: #3182ce; float: right; }
+        
+        .monitor { background: #1a202c; color: #63b3ed; padding: 15px; border-radius: 8px; font-family: 'Consolas', monospace; font-size: 13px; }
+        .data-line { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .ek-total { color: #48bb78; font-size: 16px; border-top: 1px solid #4a5568; margin-top: 10px; padding-top: 10px; }
+        .speed-val { color: #f6ad55; font-weight: bold; }
+        
+        .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .start-btn { background: #3182ce; color: white; }
+        .start-btn:hover { background: #2b6cb0; }
+        .reset-btn { background: #e2e8f0; color: #4a5568; }
+        .reset-btn:hover { background: #cbd5e0; }
+        
+        canvas { background: white; border-bottom: 4px solid #4a5568; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="experiment-layout">
+        <div id="control-panel">
+            <div class="slider-group" style="border-left: 4px solid #3182ce;">
+                <h4>左滑块 (A)</h4>
+                <label>质量 $m_1$: <span class="val" id="m1Txt">2.0</span> kg</label>
+                <input type="range" id="m1Slider" min="0.5" max="5" step="0.1" value="2.0">
+                <label>设定初速度: <span class="val" id="v1Txt">2.0</span> m/s</label>
+                <input type="range" id="v1Slider" min="0.5" max="5" step="0.1" value="2.0">
+            </div>
+
+            <div class="slider-group" style="border-left: 4px solid #718096;">
+                <h4>右滑块 (B)</h4>
+                <label>质量 $m_2$: <span class="val" id="m2Txt">2.0</span> kg</label>
+                <input type="range" id="m2Slider" min="0.5" max="5" step="0.1" value="2.0">
+            </div>
+
+            <div class="monitor">
+                <div class="data-line">A速度 $v_A$: <span class="speed-val" id="vaDisp">0.00</span> m/s</div>
+                <div class="data-line">B速度 $v_B$: <span class="speed-val" id="vbDisp">0.00</span> m/s</div>
+                <hr style="border:0; border-top:1px solid #4a5568;">
+                <div class="data-line">A动能: <span id="ek1">0.00</span> J</div>
+                <div class="data-line">B动能: <span id="ek2">0.00</span> J</div>
+                <div class="ek-total">系统总动能: <span id="ekSum">0.00</span> J</div>
+            </div>
+
+            <div class="btn-group">
+                <button class="start-btn" onclick="startMovement()">开始</button>
+                <button class="reset-btn" onclick="resetSim()">重置</button>
+            </div>
+        </div>
+
+        <canvas id="simCanvas" width="700" height="300"></canvas>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const initialState = {
+        x1: 80, x2: 450,
+        v1: 0, v2: 0
+    };
+
+    let obj1 = { x: initialState.x1, y: 200, w: 60, m: 2.0, v: 0, color: '#3182ce' };
+    let obj2 = { x: initialState.x2, y: 200, w: 60, m: 2.0, v: 0, color: '#a0aec0' };
+    let isMoving = false;
+
+    function startMovement() {
+        if (isMoving) return;
+        // 读取滑块设定的初始物理量
+        obj1.m = parseFloat(document.getElementById('m1Slider').value);
+        obj1.v = parseFloat(document.getElementById('v1Slider').value);
+        obj2.m = parseFloat(document.getElementById('m2Slider').value);
+        obj2.v = 0;
+        isMoving = true;
+    }
+
+    function resetSim() {
+        isMoving = false;
+        obj1.x = initialState.x1;
+        obj1.v = 0;
+        obj2.x = initialState.x2;
+        obj2.v = 0;
+        updateDisplay(0, 0, 0, 0, 0);
+        draw();
+    }
+
+    function updateDisplay(va, vb, e1, e2, es) {
+        document.getElementById('vaDisp').innerText = va.toFixed(2);
+        document.getElementById('vbDisp').innerText = vb.toFixed(2);
+        document.getElementById('ek1').innerText = e1.toFixed(2);
+        document.getElementById('ek2').innerText = e2.toFixed(2);
+        document.getElementById('ekSum').innerText = es.toFixed(2);
+    }
+
+    function animate() {
+        if (isMoving) {
+            obj1.x += obj1.v * 1.5; // 视觉加速
+            obj2.x += obj2.v * 1.5;
+
+            // 碰撞逻辑
+            if (obj1.x + obj1.w >= obj2.x) {
+                const m1 = obj1.m, m2 = obj2.m;
+                const u1 = obj1.v, u2 = obj2.v;
+
+                // 完全弹性碰撞公式
+                obj1.v = ((m1 - m2) * u1 + 2 * m2 * u2) / (m1 + m2);
+                obj2.v = (2 * m1 * u1 + (m2 - m1) * u2) / (m1 + m2);
+                
+                // 位置修正
+                obj1.x = obj2.x - obj1.w;
+            }
+
+            const e1 = 0.5 * obj1.m * obj1.v * obj1.v;
+            const e2 = 0.5 * obj2.m * obj2.v * obj2.v;
+            updateDisplay(obj1.v, obj2.v, e1, e2, e1 + e2);
+
+            // 越界重置检测
+            if (obj2.x > canvas.width + 100 || obj1.x < -100) isMoving = false;
+        }
+        draw();
+        requestAnimationFrame(animate);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 地面
+        ctx.strokeStyle = "#4a5568";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, 250); ctx.lineTo(canvas.width, 250); ctx.stroke();
+
+        // A
+        ctx.fillStyle = obj1.color;
+        ctx.fillRect(obj1.x, obj1.y, obj1.w, 50);
+        ctx.fillStyle = "white";
+        ctx.font = "bold 14px Arial";
+        ctx.fillText("A", obj1.x + 23, obj1.y + 30);
+
+        // B
+        ctx.fillStyle = obj2.color;
+        ctx.fillRect(obj2.x, obj2.y, obj2.w, 50);
+        ctx.fillStyle = "white";
+        ctx.fillText("B", obj2.x + 23, obj2.y + 30);
+    }
+
+    // 滑块联动
+    ['m1','v1','m2'].forEach(id => {
+        const slider = document.getElementById(id + 'Slider');
+        const txt = document.getElementById(id + 'Txt');
+        slider.oninput = () => txt.innerText = slider.value;
+    });
+
+    animate();
+</script>
+</body>
+</html>

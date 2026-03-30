@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电势与场强分布 - 完美教学版</title>
+    
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$']], displayMath: [['$$', '$$']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        /* 全局字体设置 */
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+            background: #f5f7fa; 
+            margin: 0; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+        }
+
+        /* 变量的数学字体样式 (Times New Roman + 斜体) */
+        .math-var {
+            font-family: "Times New Roman", Times, serif;
+            font-style: italic;
+            font-weight: bold;
+            padding: 0 2px;
+        }
+
+        .main-container {
+            display: flex;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+            width: 1000px;
+            max-width: 96vw;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        /* 左侧：物理视图 */
+        .view-panel {
+            flex: 1;
+            padding: 20px;
+            background: #fafafa;
+            border-right: 1px solid #eee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 右侧：图表视图 */
+        .chart-panel {
+            flex: 1.3;
+            padding: 20px 30px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-box {
+            position: relative;
+            height: 180px; /* 两个图表各占一半高度 */
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        /* 底部控制栏 */
+        .controls {
+            width: 1000px;
+            max-width: 96vw;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .control-item {
+            display: flex;
+            flex-direction: column;
+            min-width: 160px;
+        }
+
+        .label-text {
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        input[type=range] { width: 100%; cursor: pointer; }
+
+        /* 模式切换按钮组 */
+        .btn-group {
+            display: flex;
+            background: #eee;
+            border-radius: 6px;
+            padding: 3px;
+        }
+        .mode-btn {
+            border: none;
+            background: transparent;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #666;
+            transition: 0.2s;
+        }
+        .mode-btn.active {
+            background: white;
+            color: #007bff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* 公式显示区 */
+        .formula-display {
+            background: #e3f2fd;
+            border-left: 5px solid #2196f3;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 5px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 90px;
+        }
+        .formula-hint { font-size: 12px; color: #1976d2; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
+
+    </style>
+</head>
+<body>
+
+    <h2 style="color:#333; margin-top:0;">带电球体/球壳：电势 <span class="math-var">V</span> 与 场强 <span class="math-var">E</span> 分布</h2>
+
+    <div class="main-container">
+        <div class="view-panel">
+            <h4 style="margin:0 0 15px 0; color:#666;">物理模型</h4>
+            <canvas id="sphereCanvas" width="350" height="350"></canvas>
+            <div style="color:#888; font-size:12px; margin-top:10px;">
+                拖动红色点 <span class="math-var">P</span> 或使用滑块移动
+            </div>
+        </div>
+
+        <div class="chart-panel">
+            <div class="chart-box">
+                <canvas id="canvasV"></canvas>
+            </div>
+            <div class="chart-box">
+                <canvas id="canvasE"></canvas>
+            </div>
+            
+            <div class="formula-display">
+                <div class="formula-hint" id="region-hint">当前区域：内部</div>
+                <div id="latex-output" style="font-size: 1.1em;">$$ V = ... $$</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="btn-group">
+            <button class="mode-btn active" onclick="setMode('shell')" id="btn-shell">导电球壳</button>
+            <button class="mode-btn" onclick="setMode('solid')" id="btn-solid">实心绝缘球</button>
+        </div>
+
+        <div class="control-item">
+            <div class="label-text">球体半径 <span class="math-var">R</span>: <span id="txt-R">10</span> cm</div>
+            <input type="range" id="input-R" min="5" max="15" step="0.5" value="10">
+        </div>
+
+        <div class="control-item">
+            <div class="label-text">带电量 <span class="math-var">Q</span>: <span id="txt-Q">10</span> 单位</div>
+            <input type="range" id="input-Q" min="5" max="20" step="1" value="10">
+        </div>
+
+        <div class="control-item" style="flex:1.5; border-left: 1px solid #eee; padding-left: 20px;">
+            <div class="label-text" style="color:#d32f2f;">探针位置 <span class="math-var">r</span>: <span id="txt-r">0.0</span> cm</div>
+            <input type="range" id="input-r" min="0" max="30" step="0.1" value="0">
+        </div>
+    </div>
+
+<script>
+    // --- 1. 初始化变量 ---
+    let mode = 'shell'; // 'shell' 或 'solid'
+    let R = 10;
+    let Q = 10;
+    let r = 0;
+    const k = 1; // 比例常数
+
+    // 像素转换：1个物理单位(cm) = 12px
+    const scale = 12; 
+    const cx = 175; // Canvas中心 X
+    const cy = 175; // Canvas中心 Y
+
+    // --- 2. 初始化图表 (Chart.js) ---
+    // 通用配置：隐藏不必要的网格，对齐X轴
+    const commonChartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 10 } } },
+        scales: {
+            x: { 
+                type: 'linear', min: 0, max: 30,
+                grid: { display: false }, // 隐藏竖向网格，后面手动画R线
+                title: { display: false } 
+            }
+        },
+        layout: { padding: { left: 0, right: 0, top: 0, bottom: 0 } }
+    };
+
+    // V-r 图表
+    const chartV = new Chart(document.getElementById('canvasV'), {
+        type: 'line',
+        data: {
+            datasets: [
+                { label: '电势 V', data: [], borderColor: '#4caf50', borderWidth: 2, fill: true, backgroundColor: 'rgba(76, 175, 80, 0.1)', pointRadius: 0 },
+                { label: '当前点 P', data: [], backgroundColor: '#d32f2f', pointRadius: 5, type: 'scatter' }
+            ]
+        },
+        options: {
+            ...commonChartOptions,
+            scales: { ...commonChartOptions.scales, y: { title: { display: true, text: '电势 V' }, min: 0 } }
+        }
+    });
+
+    // E-r 图表
+    const chartE = new Chart(document.getElementById('canvasE'), {
+        type: 'line',
+        data: {
+            datasets: [
+                { label: '场强 E', data: [], borderColor: '#2196f3', borderWidth: 2, fill: true, backgroundColor: 'rgba(33, 150, 243, 0.1)', pointRadius: 0 },
+                { label: '当前点 P', data: [], backgroundColor: '#d32f2f', pointRadius: 5, type: 'scatter' }
+            ]
+        },
+        options: {
+            ...commonChartOptions,
+            scales: { ...commonChartOptions.scales, x: { title: { display: true, text: '距离 r (cm)' }, min: 0, max: 30 }, y: { title: { display: true, text: '场强 E' }, min: 0 } }
+        }
+    });
+
+    // --- 3. 物理计算 ---
+    function getV(pos) {
+        if (mode === 'shell') {
+            return pos <= R ? (k * Q / R) : (k * Q / pos);
+        } else {
+            // 实心球：内抛物线，外双曲线
+            return pos <= R ? (k * Q / (2 * Math.pow(R, 3))) * (3 * R * R - pos * pos) : (k * Q / pos);
+        }
+    }
+
+    function getE(pos) {
+        if (mode === 'shell') {
+            return pos < R ? 0 : (k * Q / (pos * pos));
+        } else {
+            return pos <= R ? (k * Q * pos / Math.pow(R, 3)) : (k * Q / (pos * pos));
+        }
+    }
+
+    // --- 4. 绘图与更新 ---
+    function updateAll() {
+        // 更新图表数据
+        const dataV = [];
+        const dataE = [];
+        const steps = 300;
+        
+        // 生成曲线点
+        for (let i = 0; i <= steps; i++) {
+            const xVal = (i / steps) * 30;
+            const safeX = xVal === 0 ? 0.01 : xVal; // 防止除零
+            dataV.push({ x: xVal, y: getV(safeX) });
+            dataE.push({ x: xVal, y: getE(safeX) });
+        }
+
+        // 更新 Chart V
+        chartV.data.datasets[0].data = dataV;
+        chartV.data.datasets[1].data = [{ x: r, y: getV(r===0?0.01:r) }];
+        
+        // 在 Chart V 上画一条垂直虚线标示 R (使用 annotation 插件太重，这里用grid trick)
+        // 我们简单地在 x=R 处显示网格线颜色
+        chartV.options.scales.x.grid.color = (ctx) => Math.abs(ctx.tick.value - R) < 0.1 ? '#ff9800' : 'rgba(0,0,0,0)';
+        chartV.options.scales.x.grid.lineWidth = 2;
+        chartV.options.scales.x.grid.borderDash = [5, 5];
+
+        // 更新 Chart E
+        chartE.data.datasets[0].data = dataE;
+        chartE.data.datasets[1].data = [{ x: r, y: getE(r===0?0.01:r) }];
+        chartE.options.scales.x.grid.color = (ctx) => Math.abs(ctx.tick.value - R) < 0.1 ? '#ff9800' : 'rgba(0,0,0,0)';
+        chartE.options.scales.x.grid.lineWidth = 2;
+        chartE.options.scales.x.grid.borderDash = [5, 5];
+
+        chartV.update();
+        chartE.update();
+
+        // 绘制 Canvas 球体
+        drawSphere();
+
+        // 更新公式
+        updateMath();
+    }
+
+    function drawSphere() {
+        const ctx = document.getElementById('sphereCanvas').getContext('2d');
+        ctx.clearRect(0, 0, 350, 350);
+
+        const rPx = R * scale;
+        const pPx = r * scale;
+
+        // 1. 绘制球体
+        ctx.beginPath();
+        ctx.arc(cx, cy, rPx, 0, Math.PI * 2);
+        if (mode === 'shell') {
+            ctx.strokeStyle = '#2196f3';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(33, 150, 243, 0.05)';
+            ctx.fill();
+            // 表面电荷示意
+            ctx.setLineDash([2, 6]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        } else {
+            const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rPx);
+            grad.addColorStop(0, '#fff3e0');
+            grad.addColorStop(1, '#ffb74d');
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.strokeStyle = '#f57c00';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        // 2. 绘制 R 标注
+        ctx.fillStyle = '#666';
+        ctx.font = "italic 14px Times New Roman";
+        ctx.fillText("R", cx + rPx/2, cy - 10);
+        ctx.beginPath(); // 半径线
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + rPx, cy);
+        ctx.strokeStyle = '#aaa';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // 3. 绘制高斯面 (探针所在圆)
+        ctx.beginPath();
+        ctx.arc(cx, cy, pPx, 0, Math.PI * 2);
+        ctx.strokeStyle = '#d32f2f';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 4. 绘制探针点 P
+        ctx.beginPath();
+        ctx.arc(cx + pPx, cy, 6, 0, Math.PI*2);
+        ctx.fillStyle = '#d32f2f';
+        ctx.fill();
+        ctx.font = "italic bold 16px Times New Roman";
+        ctx.fillText("P", cx + pPx + 10, cy - 10);
+        
+        // 显示 r 的值
+        ctx.font = "12px Arial";
+        ctx.fillStyle = "#d32f2f";
+        ctx.fillText("r", cx + pPx + 10, cy + 15);
+    }
+
+    function updateMath() {
+        const hint = document.getElementById('region-hint');
+        const out = document.getElementById('latex-output');
+        let latex = "";
+        
+        // 判定区域
+        const isInside = r < R;
+        hint.innerText = isInside ? `区域：内部 (r < R)` : `区域：外部 (r ≥ R)`;
+        hint.style.color = isInside ? '#2e7d32' : '#f57c00';
+
+        if (mode === 'shell') {
+            if (isInside) {
+                // 球壳内部
+                latex = `E = 0, \\quad V = \\frac{kQ}{R} \\; (\\text{常数})`;
+            } else {
+                // 球壳外部
+                latex = `E = \\frac{kQ}{r^2}, \\quad V = \\frac{kQ}{r}`;
+            }
+        } else {
+            if (isInside) {
+                // 实心球内部
+                latex = `E = k\\rho r, \\quad V = \\frac{kQ}{2R}(3 - \\frac{r^2}{R^2})`;
+            } else {
+                // 实心球外部
+                latex = `E = \\frac{kQ}{r^2}, \\quad V = \\frac{kQ}{r}`;
+            }
+        }
+
+        out.innerHTML = `$$ ${latex} $$`;
+        MathJax.typesetPromise([out]);
+    }
+
+    // --- 5. 事件监听 ---
+    const inR = document.getElementById('input-R');
+    const inQ = document.getElementById('input-Q');
+    const inr = document.getElementById('input-r');
+
+    function onInput() {
+        R = parseFloat(inR.value);
+        Q = parseFloat(inQ.value);
+        r = parseFloat(inr.value);
+
+        document.getElementById('txt-R').innerText = R.toFixed(1);
+        document.getElementById('txt-Q').innerText = Q.toFixed(0);
+        document.getElementById('txt-r').innerText = r.toFixed(1);
+
+        updateAll();
+    }
+
+    inR.addEventListener('input', onInput);
+    inQ.addEventListener('input', onInput);
+    inr.addEventListener('input', onInput);
+
+    // 拖拽探针交互
+    const canvasEl = document.getElementById('sphereCanvas');
+    let isDrag = false;
+    
+    canvasEl.addEventListener('mousedown', (e) => {
+        isDrag = true;
+        handleDrag(e);
+    });
+    window.addEventListener('mousemove', (e) => {
+        if(isDrag && e.target === canvasEl) handleDrag(e);
+    });
+    window.addEventListener('mouseup', () => isDrag = false);
+
+    function handleDrag(e) {
+        const rect = canvasEl.getBoundingClientRect();
+        const dx = e.clientX - rect.left - cx;
+        const dy = e.clientY - rect.top - cy;
+        let dist = Math.sqrt(dx*dx + dy*dy) / scale;
+        if(dist > 30) dist = 30;
+        
+        r = dist;
+        inr.value = r; // 同步滑块
+        onInput();
+    }
+
+    window.setMode = function(m) {
+        mode = m;
+        document.getElementById('btn-shell').className = m === 'shell' ? 'mode-btn active' : 'mode-btn';
+        document.getElementById('btn-solid').className = m === 'solid' ? 'mode-btn active' : 'mode-btn';
+        onInput();
+    }
+
+    // 启动
+    onInput();
+
+</script>
+</body>
+</html>

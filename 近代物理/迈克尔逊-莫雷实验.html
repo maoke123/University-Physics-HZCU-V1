@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>迈克尔逊-莫雷实验 - $v=0$ 交互演示</title>
+    <script>
+        window.MathJax = {
+            tex: { 
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$']]
+            },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #FFCC99; --laser: #ff0000; }
+        body { font-family: 'Segoe UI', sans-serif; background: #eee; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { width: 1000px; background: var(--bg); padding: 25px; border: 2px solid #333; border-radius: 12px; box-shadow: 0 15px 35px rgba(0,0,0,0.3); }
+        
+        /* 实验台容器 */
+        #stage-container { 
+            width: 100%; height: 480px; 
+            background: rgba(255,255,255,0.25); 
+            border: 2px solid #777; 
+            position: relative; 
+            overflow: hidden;
+            transition: transform 1.5s cubic-bezier(0.45, 0.05, 0.55, 0.95);
+        }
+
+        .component { position: absolute; font-size: 14px; font-weight: bold; }
+        .mirror { background: #888; border: 2px solid #222; }
+        #M1 { width: 70px; height: 12px; top: 30px; left: 215px; border-bottom: 4px solid #fff; }
+        #M2 { width: 12px; height: 70px; top: 165px; left: 600px; border-left: 4px solid #fff; }
+        .splitter { width: 80px; height: 6px; background: rgba(0, 200, 255, 0.4); border: 1.5px solid #006666; transform: rotate(45deg); top: 197px; left: 210px; z-index: 10; }
+
+        /* 探测器与条纹 */
+        #detector { width: 80px; height: 60px; background: #111; bottom: 20px; left: 210px; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 2px solid #555; }
+        #fringes { width: 200%; height: 100%; background: repeating-linear-gradient(90deg, #000, #000 7px, var(--laser) 7px, var(--laser) 14px); display: none; position: relative; left: 0; }
+
+        .beam { position: absolute; background: var(--laser); box-shadow: 0 0 6px var(--laser); z-index: 5; transition: all 0.5s linear; pointer-events: none; opacity: 0.8; }
+
+        /* 公式展示区 */
+        .formula-card { background: white; padding: 20px; border-radius: 8px; margin-top: 15px; border-left: 6px solid #008080; }
+        .formula-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 10px; }
+        
+        .panel { margin-top: 15px; display: flex; justify-content: space-around; align-items: center; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        input[type=range] { width: 200px; cursor: pointer; }
+        button { padding: 12px 25px; cursor: pointer; background: #008080; color: white; border: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #005555; transform: translateY(-2px); }
+        button:disabled { background: #aaa; transform: none; }
+        
+        .result-msg { color: #d9534f; font-weight: bold; text-align: center; margin-top: 10px; font-size: 1.2em; height: 30px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="text-align:center; margin-top:0; color:#222;">迈克尔逊-莫雷实验 (Michelson-Morley Experiment)</h2>
+
+    <div id="stage-container">
+        <div id="M1" class="component mirror"></div>
+        <div id="M2" class="component mirror"></div>
+        <div class="component splitter"></div>
+        <div id="detector" class="component">
+            <div id="fringes"></div>
+        </div>
+
+        <div style="top:200px; left:15px;" class="component">光源 $S$</div>
+        <div style="top:5px; left:235px;" class="component">$M_1$</div>
+        <div style="top:185px; left:620px;" class="component">$M_2$</div>
+        <div style="top:240px; left:265px;" class="component">分束器 $G$</div>
+        <div style="bottom:40px; left:135px;" class="component">探测器 $T$</div>
+        
+        <div style="position:absolute; right:100px; top:50px; border-top:3px solid purple; width:100px;">
+            <div style="position:absolute; right:-5px; top:-8px; border:6px solid transparent; border-left-color:purple;"></div>
+            <div style="margin-top:5px; color:purple; font-weight:bold;">$\vec{v}$ (以太风)</div>
+        </div>
+    </div>
+
+    <div class="formula-card">
+        <div class="formula-grid">
+            <div id="math-t1">
+                <strong>垂直光路时间 $t_1$:</strong>
+                $$t_1 = \frac{2l}{\sqrt{c^2 - v^2}} \approx \frac{2l}{c}(1 + \frac{v^2}{2c^2})$$
+            </div>
+            <div id="math-t2">
+                <strong>平行光路时间 $t_2$:</strong>
+                $$t_2 = \frac{l}{c-v} + \frac{l}{c+v} \approx \frac{2l}{c}(1 + \frac{v^2}{c^2})$$
+            </div>
+        </div>
+        <div id="math-delta" style="border-top: 1px dashed #ccc; padding-top:10px;">
+            <strong>理论预期光程差与条纹位移:</strong>
+            <div id="delta-formula-container">
+                $$ \Delta = c(t_2 - t_1) \approx l \frac{v^2}{c^2} \implies \delta \approx \frac{l}{\lambda} \cdot \frac{v^2}{c^2} = \mathbf{0.000 \text{ 格}} $$
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div>
+            <label>设定速度 $v/c$: </label>
+            <input type="range" id="vRange" min="0" max="0.6" step="0.01" value="0.2" oninput="updateMath()">
+            <span id="vVal" style="font-family: monospace; font-weight:bold;">0.20</span>
+        </div>
+        <button id="btn-fire" onclick="runSimulation()">发射相干光</button>
+        <button id="btn-rotate" onclick="rotateStage()" disabled>旋转 90° (核心测试)</button>
+    </div>
+
+    <div id="result-msg" class="result-msg"></div>
+</div>
+
+<script>
+    let rotation = 0;
+    let isSimulationDone = false;
+
+    // 实时更新数值并通知 MathJax 重绘
+    function updateMath() {
+        const v = parseFloat(document.getElementById('vRange').value);
+        document.getElementById('vVal').innerText = v.toFixed(2);
+        
+        // 模拟计算位移数值 (假设 l/lambda = 10)
+        const shift = (10 * v * v).toFixed(3);
+        
+        // 更新包含公式的 HTML 字符串，这样 MathJax 才能重新识别渲染
+        const container = document.getElementById('delta-formula-container');
+        container.innerHTML = `$$ \\Delta = c(t_2 - t_1) \approx l \\frac{v^2}{c^2} \\implies \\delta \\approx \\frac{l}{\\lambda} \\cdot \\frac{v^2}{c^2} = \\mathbf{${shift} \\text{ 格}} $$`;
+
+        // 核心：调用 MathJax 重新渲染
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            MathJax.typesetPromise([container]);
+        }
+
+        if (isSimulationDone) {
+            document.getElementById('result-msg').innerText = "理论预期应有条纹移动，观测实况：保持静止！";
+        }
+    }
+
+    function runSimulation() {
+        document.querySelectorAll('.beam').forEach(b => b.remove());
+        document.getElementById('fringes').style.display = 'none';
+        document.getElementById('result-msg').innerText = "";
+        isSimulationDone = false;
+        
+        const gX = 250;
+        const gY = 200;
+
+        createBeam(45, gY, 205, 3, 0); // S -> G
+
+        setTimeout(() => {
+            createBeam(gX-1, 40, 3, 160, 0); // G -> M1
+            createBeam(gX, gY, 350, 3, 0);   // G -> M2
+        }, 500);
+
+        setTimeout(() => {
+            createBeam(gX-1, gY, 3, 240, 0); // 汇合向下
+            setTimeout(() => {
+                document.getElementById('fringes').style.display = 'block';
+                document.getElementById('btn-rotate').disabled = false;
+                isSimulationDone = true;
+                updateMath();
+            }, 500);
+        }, 1000);
+    }
+
+    function createBeam(x, y, w, h, delay) {
+        const b = document.createElement('div');
+        b.className = 'beam';
+        b.style.left = x + 'px';
+        b.style.top = y + 'px';
+        b.style.width = (w <= 3 ? w+'px' : '0px');
+        b.style.height = (h <= 3 ? h+'px' : '0px');
+        document.getElementById('stage-container').appendChild(b);
+        setTimeout(() => {
+            b.style.width = w + 'px';
+            b.style.height = h + 'px';
+        }, 50);
+    }
+
+    function rotateStage() {
+        rotation += 90;
+        const stage = document.getElementById('stage-container');
+        stage.style.transform = `rotate(${rotation}deg)`;
+        
+        document.getElementById('result-msg').innerHTML = 
+            "装置旋转 90°：理论预期偏移 $\\delta \\neq 0$，实测条纹 <span style='text-decoration:underline'>零漂移</span>！证明 $v=0$。";
+        
+        if (window.MathJax) MathJax.typesetPromise();
+    }
+    
+    // 页面加载后初次计算
+    window.onload = updateMath;
+</script>
+
+</body>
+</html>

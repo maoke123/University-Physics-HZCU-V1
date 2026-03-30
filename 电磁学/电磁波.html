@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电磁波演示 (最终修复完整版)</title>
+    <style>
+        body { margin: 0; background-color: #000; color: #fff; font-family: 'Segoe UI', sans-serif; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* 顶部导航 */
+        header {
+            background: #111; padding: 10px 20px; border-bottom: 2px solid #333;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        h1 { margin: 0; font-size: 20px; color: #fff; text-shadow: 0 0 10px #4db8ff; }
+        .tabs { display: flex; gap: 10px; }
+        .tab-btn {
+            background: #222; color: #888; border: 1px solid #444; padding: 8px 20px; 
+            border-radius: 4px; cursor: pointer; font-size: 15px; font-weight: bold;
+            transition: 0.3s;
+        }
+        .tab-btn.active { 
+            background: #4db8ff; color: #000; border-color: #4db8ff; 
+            box-shadow: 0 0 15px rgba(77, 184, 255, 0.6);
+        }
+        .tab-btn:hover:not(.active) { background: #333; color: #fff; }
+
+        /* 画布 */
+        #canvas-wrapper { flex: 1; position: relative; width: 100%; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        /* 教学注解 */
+        #annotation {
+            position: absolute; top: 20px; left: 20px; width: 320px;
+            background: rgba(20, 20, 20, 0.9); border: 1px solid #444;
+            padding: 20px; border-radius: 8px; pointer-events: none;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+        h3 { margin-top: 0; color: #4db8ff; border-bottom: 1px solid #555; padding-bottom: 10px; }
+        p, li { font-size: 16px; line-height: 1.6; color: #ddd; }
+        .highlight-e { color: #ff5555; text-shadow: 0 0 5px #ff0000; font-weight: bold; }
+        .highlight-b { color: #44aaff; text-shadow: 0 0 5px #0088ff; font-weight: bold; }
+
+        /* 控制栏 */
+        #controls {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: rgba(10, 10, 10, 0.9); padding: 15px; border-top: 1px solid #333;
+            display: flex; justify-content: center; gap: 40px; align-items: center;
+        }
+        .control-item { display: flex; flex-direction: column; width: 200px; }
+        label { color: #aaa; margin-bottom: 5px; font-size: 14px; }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #4db8ff; }
+        
+        .legend-box {
+            position: absolute; bottom: 100px; right: 20px; 
+            background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px; border: 1px solid #333;
+        }
+        .legend-item { display: flex; align-items: center; margin: 5px 0; font-size: 14px; color: #ccc; }
+        .line-icon { width: 30px; height: 4px; margin-right: 10px; border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>电磁波原理 (物理修正版)</h1>
+    <div class="tabs">
+        <button class="tab-btn active" onclick="setMode(0)">1. LC振荡 (电荷流)</button>
+        <button class="tab-btn" onclick="setMode(1)">2. 开放过程 (变形)</button>
+        <button class="tab-btn" onclick="setMode(2)">3. 电磁波 (矢量传播)</button>
+    </div>
+</header>
+
+<div id="canvas-wrapper">
+    <canvas id="simCanvas"></canvas>
+    
+    <div id="annotation"></div>
+
+    <div class="legend-box">
+        <div class="legend-item">
+            <div class="line-icon" style="background:#ff3333; box-shadow:0 0 8px #ff0000;"></div>
+            电场 E (垂直极板)
+        </div>
+        <div class="legend-item">
+            <div class="line-icon" style="background:#3388ff; box-shadow:0 0 8px #0066ff;"></div>
+            磁场 B (蓝线)
+        </div>
+        <div class="legend-item">
+            <div class="line-icon" style="background:#fff; box-shadow:0 0 8px #fff;"></div>
+            导体 / 天线
+        </div>
+    </div>
+</div>
+
+<div id="controls">
+    <div class="control-item">
+        <label>演化进度 / 视角旋转</label>
+        <input type="range" id="inp-progress" min="0" max="100" value="0">
+    </div>
+    <div class="control-item">
+        <label>振荡频率: <span id="val-freq">0.8 Hz</span></label>
+        <input type="range" id="inp-freq" min="0.2" max="2.0" step="0.1" value="0.8">
+    </div>
+    <button id="btn-pause" style="padding: 10px 25px; background: #333; color: #fff; border: 1px solid #555; cursor: pointer; border-radius: 4px; font-size: 16px;">暂停</button>
+</div>
+
+<script>
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+// 状态
+let mode = 0; 
+let time = 0;
+let paused = false;
+let params = { freq: 0.8, progress: 0 };
+let camAngleY = 0.6; // 3D相机角度
+
+// UI 绑定
+const ui = {
+    anno: document.getElementById('annotation'),
+    prog: document.getElementById('inp-progress'),
+    freq: document.getElementById('inp-freq'),
+    btn: document.getElementById('btn-pause'),
+    valFreq: document.getElementById('val-freq')
+};
+
+// 初始化
+function resize() {
+    W = canvas.width = document.getElementById('canvas-wrapper').clientWidth;
+    H = canvas.height = document.getElementById('canvas-wrapper').clientHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function setMode(m) {
+    mode = m;
+    time = 0;
+    // 按钮状态
+    document.querySelectorAll('.tab-btn').forEach((b, i) => {
+        b.className = i === m ? 'tab-btn active' : 'tab-btn';
+    });
+    // 重置进度条逻辑
+    if (m === 1) { // 模式1手动控制
+        ui.prog.value = 0;
+        params.progress = 0;
+        paused = true;
+        ui.btn.innerText = "播放动画";
+    } else if (m === 2) { // 模式2进度条控制旋转
+        ui.prog.value = 50;
+        paused = false;
+        ui.btn.innerText = "暂停";
+    } else {
+        paused = false;
+        ui.btn.innerText = "暂停";
+    }
+    updateText();
+}
+
+ui.freq.oninput = () => { params.freq = parseFloat(ui.freq.value); ui.valFreq.innerText = params.freq.toFixed(1) + " Hz"; };
+ui.prog.oninput = () => { 
+    params.progress = parseInt(ui.prog.value); 
+    if(mode === 2) {
+        camAngleY = (params.progress - 50) * 0.05 + 0.6; 
+    }
+};
+ui.btn.onclick = () => { paused = !paused; ui.btn.innerText = paused ? "继续" : "暂停"; };
+
+function updateText() {
+    let html = "";
+    if (mode === 0) {
+        html = `<h3>1. LC 振荡 (闭合回路)</h3>
+        <p>标准 LC 电路演示：</p>
+        <ul>
+            <li><b>电容 (C)</b>: 极板上的电荷堆积 (红/蓝线密度)。</li>
+            <li><b>电感 (L)</b>: 线圈周围产生磁场。</li>
+            <li>注意：<span style="color:#fff;">+ / -</span> 符号表示极板极性。</li>
+        </ul>`;
+    } else if (mode === 1) {
+        html = `<h3>2. 开放过程 (变形与辐射)</h3>
+        <p style="color:#4db8ff">★ 拖动进度条，观察磁场变化</p>
+        <p>变化的电场和电流共同作用：</p>
+        <ul>
+            <li><b>初始状态</b>: 磁感线垂直穿过闭合回路。</li>
+            <li><b>张开过程</b>: 磁感线从中心“断开”，逐渐向外扩散。</li>
+            <li><b>天线状态</b>: 形成向外传播的同心圆磁场环。</li>
+        </ul>`;
+    } else if (mode === 2) {
+        html = `<h3>3. 电磁波传播</h3>
+        <p>偶极子激发的电磁波：</p>
+        <ul>
+            <li><span class="highlight-e">E (红)</span> 和 <span class="highlight-b">B (蓝)</span> 相互垂直。</li>
+            <li>它们“同相”变化（同时达到最大值）。</li>
+            <li>沿轴线向远处传播。</li>
+        </ul>`;
+    }
+    ui.anno.innerHTML = html;
+}
+
+// 动画循环
+function loop() {
+    requestAnimationFrame(loop);
+    
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, W, H);
+
+    if (!paused) time += 0.05 * params.freq;
+    
+    // 模式1自动播放进度
+    if (mode === 1 && !paused) {
+        let p = (Math.sin(time * 0.5 - Math.PI/2) + 1) / 2 * 100;
+        params.progress = p;
+        ui.prog.value = p;
+    }
+
+    ctx.save();
+    if (mode === 0) drawLC();
+    else if (mode === 1) drawOpening(); 
+    else if (mode === 2) drawWave();
+    ctx.restore();
+}
+
+// --- 绘图工具 ---
+function drawGlowLine(x1, y1, x2, y2, color, width, blur) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.shadowBlur = blur;
+    ctx.shadowColor = color;
+    ctx.stroke();
+    ctx.shadowBlur = 0; 
+}
+
+function drawArrow(x1, y1, x2, y2, color) {
+    const headlen = 8; 
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const angle = Math.atan2(dy, dx);
+    
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = color;
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+}
+
+function drawSigns(x, y, sign, alpha) {
+    if (alpha < 0.2) return; 
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 24px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowBlur = 5;
+    ctx.shadowColor = "#ffffff";
+    ctx.fillText(sign, x, y);
+    ctx.restore();
+}
+
+// 绘制物理螺旋线圈
+function drawCoil(ctx, cx, cy, height, width, loops, color) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    
+    let startY = cy - height / 2;
+    let endY = cy + height / 2;
+    let step = (endY - startY) / loops;
+    
+    for (let i = 0; i < loops; i++) {
+        let y = startY + i * step;
+        ctx.bezierCurveTo(cx + width, y, cx + width, y + step, cx, y + step);
+        ctx.bezierCurveTo(cx - width, y + step, cx - width, y + 2*step, cx, y + step);
+    }
+    ctx.stroke();
+    return { top: startY, bottom: startY + loops * step };
+}
+
+// --- 模式 1: LC (标准版) ---
+function drawLC() {
+    const cx = W/2, cy = H/2;
+    const Q = Math.cos(time);
+    const I = -Math.sin(time);
+
+    // 导线框
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(cx - 100, cy - 80, 200, 160);
+
+    // 1. 电容
+    const plateGap = 50; 
+    const topPlateY = cy - 80 - plateGap/2 - 8; 
+    const botPlateY = cy - 80 + plateGap/2;      
+
+    // 连接导线
+    ctx.clearRect(cx - 80, cy - 120, 160, 80); 
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(cx - 100, cy - 80); ctx.lineTo(cx - 60, cy - 80);
+    ctx.moveTo(cx - 60, cy - 80); ctx.lineTo(cx - 60, topPlateY + 4); 
+    ctx.moveTo(cx - 60, cy - 80); ctx.lineTo(cx - 60, botPlateY + 4); 
+    ctx.moveTo(cx + 100, cy - 80); ctx.lineTo(cx + 60, cy - 80);
+    ctx.moveTo(cx + 60, cy - 80); ctx.lineTo(cx + 60, topPlateY + 4);
+    ctx.moveTo(cx + 60, cy - 80); ctx.lineTo(cx + 60, botPlateY + 4);
+    ctx.stroke();
+
+    // 极板
+    const qAbs = Math.abs(Q);
+    ctx.fillStyle = `rgba(200, 200, 200, 1)`;
+    ctx.fillRect(cx - 60, topPlateY, 120, 8); 
+    ctx.fillRect(cx - 60, botPlateY, 120, 8); 
+
+    // 符号
+    let topSign = Q > 0 ? "+" : "-";
+    let botSign = Q > 0 ? "-" : "+";
+    drawSigns(cx, topPlateY - 20, topSign, qAbs);
+    drawSigns(cx, botPlateY + 28, botSign, qAbs);
+
+    // 电场线
+    const maxELines = 15; 
+    const numELines = Math.floor(maxELines * qAbs); 
+
+    if (numELines > 0) {
+        const eColor = Q > 0 ? '#ff3333' : '#3388ff';
+        const totalWidth = 100;
+        const step = totalWidth / (numELines + 1);
+
+        for(let i = 1; i <= numELines; i++) {
+            const xOffset = -totalWidth/2 + i * step;
+            drawGlowLine(cx + xOffset, topPlateY + 8, cx + xOffset, botPlateY, eColor, 3, 10 + qAbs*10);
+            if (i === Math.ceil(numELines/2)) { 
+                ctx.fillStyle = eColor;
+                ctx.beginPath();
+                let midY = (topPlateY + 8 + botPlateY) / 2;
+                let dir = Q > 0 ? 1 : -1; 
+                ctx.moveTo(cx + xOffset, midY + dir*5);
+                ctx.lineTo(cx + xOffset - 6, midY - dir*5);
+                ctx.lineTo(cx + xOffset + 6, midY - dir*5);
+                ctx.fill();
+            }
+        }
+    }
+
+    // 2. 电感部分
+    ctx.clearRect(cx - 80, cy + 70, 160, 20); 
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    for(let i=0; i<6; i++) {
+        let x = cx - 50 + i * 20;
+        ctx.arc(x, cy + 80, 10, 0, Math.PI*2);
+    }
+    ctx.stroke();
+
+    // 磁感线 (LC)
+    const iAbs = Math.abs(I);
+    const numBLoops = Math.floor(6 * iAbs);
+    if (numBLoops > 0) {
+        const bColor = '#3388ff';
+        ctx.save();
+        ctx.setLineDash([10, 10]); 
+        const baseRx = 60, baseRy = 25;
+        const stepRx = 15, stepRy = 8;
+        for(let j = 0; j < numBLoops; j++) {
+            const rx = baseRx + j * stepRx;
+            const ry = baseRy + j * stepRy;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + 80, rx, ry, 0, 0, Math.PI*2);
+            ctx.strokeStyle = bColor;
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 10 + iAbs * 5;
+            ctx.shadowColor = bColor;
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+}
+
+// === 最终重制：赫兹偶极子辐射 (EM Wave Propagation) ===
+// 核心逻辑：不再区分静态E和B，而是直接展示电磁场的"脱落"和"传播"
+function drawOpening() {
+    const cx = W / 2, cy = H / 2;
+    // morph: 0 = 闭合, 1 = 完全张开(偶极子)
+    const morph = params.progress / 100; 
+
+    // 物理量
+    const freq = 2; // 振荡频率
+    const omega = time * freq;
+    const Q = Math.cos(omega); // 电荷
+    const I = -Math.sin(omega); // 电流
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // ----------------------------------------------------
+    // 1. 绘制向外传播的电磁波 (The Radiating EM Wave)
+    // ----------------------------------------------------
+    // 只有当电路张开(变成天线)后，辐射才变得明显
+    if (morph > 0.1) {
+        ctx.save();
+        
+        // 波速
+        const c = 80; 
+        // 生成一系列波前
+        // 我们反向追踪：在 t 时刻距离 r 处的相位 = omega - k*r
+        const maxR = Math.max(W, H) / 1.5;
+        const numWaves = 10;
+        
+        // 辐射强度随 morph 增大 (闭合回路辐射弱，张开辐射强)
+        const radiationStrength = morph;
+
+        for (let i = 0; i < 30; i++) {
+            // 计算波的位置
+            // 我们生成连续的波包
+            let rBase = (time * c) % (W); 
+            let r = rBase + i * (W/numWaves); // 分布波
+            
+            // 每一个波圈对应一个相位
+            // r = c * t_delay -> t_delay = r/c
+            // 相位 = time * freq - r * (freq/c)
+            let phaseAtR = omega - r * (freq / c);
+            
+            // 波的强度/极性 (E场强度)
+            let fieldStrength = Math.cos(phaseAtR);
+            
+            // 距离衰减 (1/r)
+            let alpha = radiationStrength * Math.abs(fieldStrength) * (150 / (r + 50));
+            if (alpha > 1) alpha = 1;
+            if (alpha < 0.05) continue; // 太淡不画
+
+            // 颜色：根据相位的正负，显示红色/蓝色 (代表场方向的变化)
+            // 这就隐含了 B 场的存在 (E变方向，B也变)
+            let color = fieldStrength > 0 ? `rgba(255, 50, 50, ${alpha})` : `rgba(50, 100, 255, ${alpha})`;
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2 + r / 150; // 越远越宽
+
+            // === 绘制“肾形”波前 (偶极子辐射图样) ===
+            // 偶极子在轴向(theta=0)辐射为0，赤道面(theta=90)辐射最大
+            // 公式：r_draw = r * sin(theta)^2 (近似)
+            
+            ctx.beginPath();
+            
+            // 我们画两半：左边和右边
+            for (let side of [-1, 1]) {
+                // 角度从 -80度 到 +80度 (避开正极板)
+                let startAngle = -Math.PI / 2.2;
+                let endAngle = Math.PI / 2.2;
+                let step = 0.1;
+                
+                let first = true;
+                for (let a = startAngle; a <= endAngle; a += step) {
+                    // 辐射方向因子 (sin^2 theta)
+                    // 这里坐标系旋转了，所以用 cos(a)
+                    let patternFactor = Math.pow(Math.cos(a), 1.5);
+                    
+                    // 近场修正：如果还没完全张开，波稍微圆一点
+                    let shape = morph * patternFactor + (1-morph) * 1.0;
+                    
+                    let drawR = r * shape;
+                    
+                    let px = cx + side * drawR * Math.cos(a);
+                    let py = cy + drawR * Math.sin(a);
+                    
+                    if (first) { ctx.moveTo(px, py); first = false; }
+                    else { ctx.lineTo(px, py); }
+                }
+            }
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // ----------------------------------------------------
+    // 2. 绘制机械结构 (天线/极板)
+    // ----------------------------------------------------
+    const coilH = 60; 
+    const stemLen = 20; 
+    const armLen = 80; 
+    const plateW = 40;
+    const plateH = 6;
+    
+    // 线圈
+    drawCoil(ctx, cx, cy, coilH, 20, 6, '#444');
+
+    // 计算臂的位置
+    // 角度：0 (闭合) -> 90度 (张开)
+    const angle = morph * (Math.PI / 2);
+
+    const topPivotY = (cy - coilH/2) - stemLen;
+    const topTipX = cx + Math.cos(angle) * armLen;
+    const topTipY = topPivotY - Math.sin(angle) * armLen; 
+
+    const botPivotY = (cy + coilH/2) + stemLen;
+    const botTipX = cx + Math.cos(angle) * armLen;
+    const botTipY = botPivotY + Math.sin(angle) * armLen;
+
+    function drawArm(pivotY, tipX, tipY) {
+        ctx.beginPath();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 4;
+        // 连接到线圈
+        ctx.moveTo(cx, cy > pivotY ? cy - coilH/2 : cy + coilH/2);
+        ctx.lineTo(cx, pivotY); 
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+        
+        // 关节
+        ctx.fillStyle = '#444';
+        ctx.beginPath(); ctx.arc(cx, pivotY, 4, 0, Math.PI*2); ctx.fill();
+        
+        // 极板
+        ctx.fillStyle = '#aaa';
+        ctx.fillRect(tipX - plateW/2, tipY - plateH/2, plateW, plateH);
+    }
+    
+    drawArm(topPivotY, topTipX, topTipY);
+    drawArm(botPivotY, botTipX, botTipY);
+
+    // ----------------------------------------------------
+    // 3. 绘制近场连接线 (Near Field)
+    // ----------------------------------------------------
+    // 这是尚未脱落的场，连接着正负极
+    // 随着张开和距离增加，能量转移给辐射场
+    
+    let qAbs = Math.abs(Q);
+    let signOffset = 25;
+    let txtOff = morph < 0.2 ? 25 : 0;
+    
+    // 极性标注
+    drawSigns(topTipX + txtOff, topTipY - signOffset, Q > 0 ? "+" : "-", qAbs);
+    drawSigns(botTipX + txtOff, botTipY + signOffset, Q > 0 ? "-" : "+", qAbs);
+
+    if (qAbs > 0.05) {
+        ctx.save();
+        // 颜色随极性变化
+        const eColor = Q > 0 ? '#ff3333' : '#3388ff';
+        ctx.strokeStyle = eColor;
+        ctx.lineWidth = 2;
+        // 近场随距离快速衰减
+        ctx.globalAlpha = qAbs;
+
+        const lines = 6; 
+        for (let i = 0; i < lines; i++) {
+            let offset = (i / (lines - 1)) - 0.5; 
+            
+            let startX = topTipX + offset * plateW;
+            let startY = topTipY;
+            let endX = botTipX + offset * plateW;
+            let endY = botTipY;
+
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+
+            // 闭合时画直线，张开时画贝塞尔曲线
+            if (morph < 0.05) {
+                ctx.lineTo(endX, endY);
+            } else {
+                // 控制点向外鼓出
+                let bulge = morph * 200; 
+                let midX = (startX + endX) / 2;
+                let cpX = midX + bulge; 
+                let cpY1 = startY + (endY - startY) * 0.2;
+                let cpY2 = endY - (endY - startY) * 0.2;
+
+                ctx.bezierCurveTo(cpX, cpY1, cpX, cpY2, endX, endY);
+                
+                // 镜像左侧 (偶极子形态)
+                if (morph > 0.1) {
+                    ctx.moveTo(startX, startY);
+                    let cpXLeft = midX - bulge; 
+                    ctx.bezierCurveTo(cpXLeft, cpY1, cpXLeft, cpY2, endX, endY);
+                }
+            }
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+}
+
+// --- 模式 3: 电磁波矢量 ---
+function drawWave() {
+    const cx = W/2 - 200, cy = H/2;
+    function iso(x, y, z) {
+        const cosY = Math.cos(camAngleY);
+        const sinY = Math.sin(camAngleY);
+        const x1 = x * cosY - z * sinY;
+        const z1 = x * sinY + z * cosY;
+        return { x: cx + x1 + 200, y: cy - y + z1 * 0.4 };
+    }
+    const origin = iso(0,0,0); const axisX = iso(500,0,0);
+    ctx.strokeStyle = '#666'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(origin.x, origin.y); ctx.lineTo(axisX.x, axisX.y); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.fillText("传播方向 v", axisX.x, axisX.y + 20);
+    const lambda = 0.04; const step = 15; 
+    for (let x = 0; x < 500; x += step) {
+        const phase = x * lambda - time * 2;
+        const E = Math.sin(phase) * 80; const B = Math.sin(phase) * 80; 
+        const pBase = iso(x, 0, 0); const pE = iso(x, E, 0);
+        if (Math.abs(E) > 2) drawArrow(pBase.x, pBase.y, pE.x, pE.y, '#ff3333');
+        const pB = iso(x, 0, B);
+        if (Math.abs(B) > 2) drawArrow(pBase.x, pBase.y, pB.x, pB.y, '#3388ff');
+    }
+}
+
+setMode(0);
+updateText();
+loop();
+</script>
+</body>
+</html>

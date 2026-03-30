@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>狭义相对论：同时的相对性演示</title>
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root { --bg: #FFCC99; --k-color: #333; --kp-color: #008000; }
+        body { font-family: 'Segoe UI', sans-serif; background: #eee; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { width: 1000px; background: white; padding: 25px; border: 2px solid #333; border-radius: 12px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); }
+        
+        /* 演示画布 */
+        #sim-area { 
+            width: 100%; height: 350px; background: #fdfdfd; 
+            border: 1px solid #ccc; position: relative; overflow: hidden; margin: 15px 0;
+        }
+
+        /* 坐标系 K */
+        .axis-k { position: absolute; width: 100%; height: 2px; background: var(--k-color); bottom: 80px; }
+        .tick { position: absolute; width: 2px; height: 10px; background: var(--k-color); bottom: -4px; }
+
+        /* 运动系 K' */
+        #frame-kp { 
+            position: absolute; width: 2px; height: 150px; background: var(--kp-color); 
+            bottom: 80px; left: 100px; transition: left 0.1s linear; z-index: 10;
+        }
+        #axis-kp { position: absolute; width: 2000px; height: 2px; background: var(--kp-color); top: 0; left: -1000px; opacity: 0.5; }
+
+        /* 灯泡 */
+        .lamp { 
+            position: absolute; width: 30px; height: 30px; border-radius: 50%; 
+            border: 2px solid #666; background: #ddd; bottom: 82px; transform: translateX(-50%);
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+        .lamp.active { background: #ffff00; box-shadow: 0 0 20px #ffff00; border-color: orange; }
+        .lamp-label { position: absolute; top: -25px; width: 100%; text-align: center; font-weight: bold; }
+
+        /* 控制与公式 */
+        .formula-box { background: #f9f9f9; padding: 15px; border-left: 5px solid var(--kp-color); margin-bottom: 15px; }
+        .controls { display: flex; justify-content: space-around; align-items: center; background: #eee; padding: 15px; border-radius: 8px; }
+        button { padding: 10px 25px; cursor: pointer; background: var(--kp-color); color: white; border: none; border-radius: 5px; font-weight: bold; }
+        button:hover { filter: brightness(1.2); }
+        
+        .status-bar { text-align: center; margin-top: 10px; font-weight: bold; height: 24px; color: #d9534f; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="text-align:center;">同时的相对性：洛伦兹变换演示</h2>
+
+    <div class="formula-box">
+        <div id="math-display">
+            在 $K'$ 系中，事件 $A, B$ 的时间满足：
+            $$t'_1 = \frac{t - \frac{ux_1}{c^2}}{\sqrt{1 - u^2/c^2}}, \quad t'_2 = \frac{t - \frac{ux_2}{c^2}}{\sqrt{1 - u^2/c^2}}$$
+        </div>
+    </div>
+
+    <div id="sim-area">
+        <div class="axis-k">
+            <div class="tick" style="left: 300px;"></div>
+            <div class="tick" style="left: 700px;"></div>
+            <div style="position:absolute; bottom:-25px; left:10px; color:var(--k-color);">参考系 $K$ (静止)</div>
+        </div>
+
+        <div id="lampA" class="lamp" style="left: 300px;"><div class="lamp-label">灯 $A$ ($x_1$)</div></div>
+        <div id="lampB" class="lamp" style="left: 700px;"><div class="lamp-label">灯 $B$ ($x_2$)</div></div>
+
+        <div id="frame-kp">
+            <div id="axis-kp"></div>
+            <div style="position:absolute; top:-20px; left:5px; color:var(--kp-color); white-space:nowrap;">参考系 $K'$ (速度 $u$)</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div>
+            <label>速度 $u/c$ (左负右正): </label>
+            <input type="range" id="uRange" min="-0.8" max="0.8" step="0.1" value="0.4">
+            <span id="uVal" style="font-family:monospace; font-weight:bold;">0.4</span>
+        </div>
+        <button onclick="triggerEvents()">观察灯亮过程</button>
+    </div>
+
+    <div id="status" class="status-bar"></div>
+
+    <div style="margin-top:20px; font-size: 0.9em; color: #555;">
+        <strong>演示说明：</strong> 在静止系 $K$ 中，两灯是同时亮的。但在运动系 $K'$ 中，由于洛伦兹变换，灯亮的先后取决于运动方向：
+        <ul>
+            <li>向右运动 ($u > 0$): 灯 $B$ ($x$值大者) 对应的 $t'$ 较小，故 <strong>$B$ 灯先亮</strong>。</li>
+            <li>向左运动 ($u < 0$): 灯 $A$ ($x$值小者) 对应的 $t'$ 较小，故 <strong>$A$ 灯先亮</strong>。</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    const uRange = document.getElementById('uRange');
+    const uVal = document.getElementById('uVal');
+    const lampA = document.getElementById('lampA');
+    const lampB = document.getElementById('lampB');
+    const frameKp = document.getElementById('frame-kp');
+    const status = document.getElementById('status');
+
+    uRange.oninput = function() {
+        uVal.innerText = this.value;
+    };
+
+    function triggerEvents() {
+        const u = parseFloat(uRange.value);
+        
+        // 重置状态
+        lampA.classList.remove('active');
+        lampB.classList.remove('active');
+        status.innerText = "事件开始...";
+        frameKp.style.left = "100px";
+
+        // 动画：K' 系移动
+        let startTime = performance.now();
+        const duration = 2000; // 2秒演示周期
+
+        function animate(now) {
+            let elapsed = now - startTime;
+            let p = elapsed / duration;
+
+            if (p <= 1) {
+                // 移动 K' 系位置
+                let move = 100 + p * 600; 
+                frameKp.style.left = move + "px";
+                requestAnimationFrame(animate);
+            }
+        }
+        requestAnimationFrame(animate);
+
+        // 物理逻辑延迟计算 (放大延迟以便肉眼观察)
+        // 在 K' 系看来的时间差 Delta t' 与 -u*Delta x 成正比
+        const baseDelay = 1000; // 基准时间（1秒时K系同时亮）
+        const offset = u * 800; // 根据速度计算先后偏移量
+
+        if (u > 0) {
+            // u > 0, B先亮 (1000 - offset), A后亮 (1000 + offset)
+            setTimeout(() => { lampB.classList.add('active'); status.innerText = "观测到：B 灯先亮"; }, baseDelay - Math.abs(offset/2));
+            setTimeout(() => { lampA.classList.add('active'); status.innerText = "观测到：B 先亮，A 后亮"; }, baseDelay + Math.abs(offset/2));
+        } else if (u < 0) {
+            // u < 0, A先亮
+            setTimeout(() => { lampA.classList.add('active'); status.innerText = "观测到：A 灯先亮"; }, baseDelay - Math.abs(offset/2));
+            setTimeout(() => { lampB.classList.add('active'); status.innerText = "观测到：A 先亮，B 后亮"; }, baseDelay + Math.abs(offset/2));
+        } else {
+            // u = 0, 同时亮
+            setTimeout(() => { 
+                lampA.classList.add('active'); 
+                lampB.classList.add('active'); 
+                status.innerText = "观测到：两灯同时亮 (u=0)"; 
+            }, baseDelay);
+        }
+    }
+</script>
+
+</body>
+</html>

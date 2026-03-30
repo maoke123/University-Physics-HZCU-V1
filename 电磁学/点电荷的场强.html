@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>点电荷场强仿真 (Electric Field Simulation)</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --bg-color: #f0f2f5;
+            --panel-bg: #ffffff;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 20px;
+            color: var(--text-color);
+            height: 100vh;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 主要布局容器 */
+        .main-wrapper {
+            display: flex;
+            width: 100%;
+            max-width: 1200px;
+            background-color: var(--panel-bg);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        /* 左侧：仿真区域 */
+        .simulation-panel {
+            flex: 2; /* 占据更多空间 */
+            padding: 20px;
+            background-color: #fafafa;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-right: 1px solid #eee;
+        }
+
+        canvas {
+            background: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            cursor: crosshair;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            /* 确保画布不会溢出 */
+            max-width: 100%; 
+            height: auto;
+        }
+
+        .legend {
+            font-size: 0.9em;
+            color: #777;
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        /* 右侧：侧边栏区域 */
+        .sidebar-panel {
+            flex: 1; /* 占据较少空间 */
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 25px; /* 模块间距 */
+            background-color: var(--panel-bg);
+        }
+
+        h1 {
+            color: var(--primary-color);
+            font-size: 1.5rem;
+            margin: 0 0 10px 0;
+            text-align: center;
+        }
+
+        /* 侧边栏模块通用样式 */
+        .sidebar-module {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .sidebar-module h2 {
+            font-size: 1.1rem;
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: var(--primary-color);
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 8px;
+        }
+
+        /* 公式样式微调 */
+        .formula-box p {
+            margin: 5px 0;
+            font-size: 0.95em;
+        }
+
+        /* 控制控件样式 */
+        .control-item {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .charge-display {
+            font-weight: bold;
+            color: var(--secondary-color);
+        }
+
+        /* 数据显示样式 */
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-family: monospace;
+            font-size: 1.05em;
+        }
+        .data-label { color: #666; }
+        .data-value { font-weight: bold; color: var(--primary-color); }
+        
+    </style>
+</head>
+<body>
+
+    <div class="main-wrapper">
+        <section class="simulation-panel">
+            <canvas id="fieldCanvas" width="640" height="480"></canvas>
+            <div class="legend">
+                <span style="color:rgba(231, 76, 60, 0.8)">— 正电场线</span> | 
+                <span style="color:rgba(52, 152, 219, 0.8)">— 负电场线</span> | 
+                <span style="border-bottom: 1px dashed #aaa">--- 等势线</span> | 
+                <span style="color:#f1c40f">● 可拖动测试点 P</span>
+            </div>
+        </section>
+
+        <section class="sidebar-panel">
+            <h1>点电荷场强仿真</h1>
+
+            <div class="sidebar-module formula-box">
+                <h2>物理原理 (Formula)</h2>
+                <p>真空中点电荷场强公式：</p>
+                $$ \mathbf{E} = k \frac{q}{r^2} \hat{\mathbf{r}} $$
+                <p style="font-size: 0.85em; color: #666;">
+                    其中 $k \approx 9.0 \times 10^9 N \cdot m^2 / C^2$，
+                    $\hat{\mathbf{r}}$ 为单位矢量。
+                </p>
+            </div>
+
+            <div class="sidebar-module control-box">
+                <h2>参数控制 (Controls)</h2>
+                <div class="control-item">
+                    <label for="chargeSlider"><strong>源电荷电量 $q$ (微库仑):</strong></label>
+                    <input type="range" id="chargeSlider" min="-10" max="10" value="5" step="1">
+                    <div style="text-align: center;">
+                        当前值: <span id="chargeValue" class="charge-display">5</span> $\mu C$
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-module data-box">
+                <h2>测试点 P 数据 (Data)</h2>
+                <div class="data-row">
+                    <span class="data-label">距离 $r$:</span>
+                    <span class="data-value"><span id="distVal">0.00</span> m</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">场强 $E$:</span>
+                    <span class="data-value"><span id="fieldVal">0.00</span> N/C</span>
+                </div>
+            </div>
+
+        </section>
+    </div>
+
+
+    <script>
+        // --- 配置与常量 ---
+        const canvas = document.getElementById('fieldCanvas');
+        const ctx = canvas.getContext('2d');
+        // 动态获取画布宽高
+        const width = canvas.width;
+        const height = canvas.height;
+        const centerX = width / 2;
+        const centerY = height / 2;
+
+        // 物理模拟参数
+        let sourceQ = 5; // 源电荷量
+        const k_display = 9.0e9; // 真实的 k (用于显示数值)
+        // 调整比例尺：现在画布小了，让 1米 对应更少的像素，以便显示更大的范围
+        const scalePixelsPerMeter = 80; // 80像素 = 1米
+        
+        // 测试点状态 (初始位置稍微调整)
+        let testPoint = {
+            x: centerX + 120,
+            y: centerY,
+            dragging: false,
+            radius: 7
+        };
+
+        // DOM 元素引用
+        const slider = document.getElementById('chargeSlider');
+        const chargeValSpan = document.getElementById('chargeValue');
+        const distDisplay = document.getElementById('distVal');
+        const fieldDisplay = document.getElementById('fieldVal');
+
+        // --- 事件监听 ---
+        slider.addEventListener('input', (e) => {
+            sourceQ = parseInt(e.target.value);
+            chargeValSpan.textContent = sourceQ;
+            // 动态改变用于显示的颜色
+            if (sourceQ > 0) chargeValSpan.style.color = "#e74c3c";
+            else if (sourceQ < 0) chargeValSpan.style.color = "#3498db";
+            else chargeValSpan.style.color = "#95a5a6";
+            draw();
+        });
+
+        // 初始化电荷数值颜色
+        chargeValSpan.style.color = "#e74c3c";
+
+        canvas.addEventListener('mousedown', (e) => {
+            const pos = getMousePos(e);
+            const dx = pos.x - testPoint.x;
+            const dy = pos.y - testPoint.y;
+            if (dx*dx + dy*dy < testPoint.radius * testPoint.radius * 4) { 
+                testPoint.dragging = true;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (testPoint.dragging) {
+                const pos = getMousePos(e);
+                // 限制不要拖到源电荷太近的地方
+                const dx = pos.x - centerX;
+                const dy = pos.y - centerY;
+                if (dx*dx + dy*dy > 225) { // 距离大于15px
+                    testPoint.x = pos.x;
+                    testPoint.y = pos.y;
+                }
+                draw();
+            } else {
+                // 鼠标悬停效果
+                const pos = getMousePos(e);
+                const dx = pos.x - testPoint.x;
+                const dy = pos.y - testPoint.y;
+                if (dx*dx + dy*dy < testPoint.radius * testPoint.radius * 4) {
+                    canvas.style.cursor = 'grab';
+                } else {
+                    canvas.style.cursor = 'crosshair';
+                }
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            testPoint.dragging = false;
+            if (canvas.style.cursor === 'grab') {
+                 canvas.style.cursor = 'grab';
+            }
+        });
+
+        // 获取鼠标在Canvas中的相对坐标
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            // 处理 Canvas 在页面缩放时的坐标映射
+            const scaleX = canvas.width / rect.width; 
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: (evt.clientX - rect.left) * scaleX,
+                y: (evt.clientY - rect.top) * scaleY
+            };
+        }
+
+        // --- 核心绘图函数 ---
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            drawGrid();
+            drawFieldLines();
+            drawEquipotentialLines();
+            drawSourceCharge();
+            drawTestPointAndVector();
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = '#f5f5f5';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const gridSize = 40;
+            for(let x=0; x<=width; x+=gridSize) { ctx.moveTo(x,0); ctx.lineTo(x,height); }
+            for(let y=0; y<=height; y+=gridSize) { ctx.moveTo(0,y); ctx.lineTo(width,y); }
+            ctx.stroke();
+        }
+
+        function drawSourceCharge() {
+            const radius = 18;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            if (sourceQ > 0) ctx.fillStyle = '#e74c3c';
+            else if (sourceQ < 0) ctx.fillStyle = '#3498db';
+            else ctx.fillStyle = '#95a5a6';
+            
+            // 添加渐变效果增加立体感
+            let grd = ctx.createRadialGradient(centerX, centerY, radius*0.2, centerX, centerY, radius);
+            if (sourceQ > 0) { grd.addColorStop(0, '#ff7675'); grd.addColorStop(1, '#c0392b'); }
+            else if (sourceQ < 0) { grd.addColorStop(0, '#74b9ff'); grd.addColorStop(1, '#0984e3'); }
+            else { grd.addColorStop(0, '#b2bec3'); grd.addColorStop(1, '#636e72'); }
+            ctx.fillStyle = grd;
+
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 22px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            let sign = sourceQ > 0 ? "+" : (sourceQ < 0 ? "-" : "");
+            ctx.fillText(sign, centerX, centerY);
+        }
+
+        function drawFieldLines() {
+            if (sourceQ === 0) return;
+
+            const numLines = 20; 
+            const maxR = Math.max(width, height) * 0.8; 
+
+            ctx.strokeStyle = sourceQ > 0 ? 'rgba(231, 76, 60, 0.3)' : 'rgba(52, 152, 219, 0.3)';
+            ctx.lineWidth = 1.5;
+
+            for (let i = 0; i < numLines; i++) {
+                const angle = (Math.PI * 2 / numLines) * i;
+                const startR = 18; 
+                
+                const startX = centerX + Math.cos(angle) * startR;
+                const startY = centerY + Math.sin(angle) * startR;
+                const endX = centerX + Math.cos(angle) * maxR;
+                const endY = centerY + Math.sin(angle) * maxR;
+
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+
+                const arrowR = maxR * 0.6; 
+                const arrowX = centerX + Math.cos(angle) * arrowR;
+                const arrowY = centerY + Math.sin(angle) * arrowR;
+                const arrowDir = sourceQ > 0 ? angle : angle + Math.PI;
+                drawArrowHead(arrowX, arrowY, arrowDir, 10, ctx.strokeStyle);
+            }
+        }
+
+        function drawEquipotentialLines() {
+            if (sourceQ === 0) return;
+            ctx.strokeStyle = 'rgba(150, 150, 150, 0.5)';
+            ctx.setLineDash([6, 4]); 
+            ctx.lineWidth = 1;
+
+            // 画几个同心圆
+            for (let r = 40; r < Math.min(width,height)/1.8; r += 40) {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, r, 0, Math.PI*2);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]); 
+        }
+
+        function drawTestPointAndVector() {
+            const dx = testPoint.x - centerX;
+            const dy = testPoint.y - centerY;
+            // 转换为物理距离 (米)
+            const r_pixels = Math.sqrt(dx*dx + dy*dy);
+            const r_meters = r_pixels / scalePixelsPerMeter;
+            
+            // 计算 E 的大小
+            let E_val = 0;
+            if (r_meters > 0.01) { // 避免极端接近
+                E_val = k_display * (Math.abs(sourceQ) * 1e-6) / (r_meters * r_meters);
+            }
+
+            // 更新右侧栏数据
+            distDisplay.innerText = r_meters.toFixed(3);
+            fieldDisplay.innerText = E_val.toExponential(3);
+
+            // 绘制测试点
+            ctx.beginPath();
+            ctx.arc(testPoint.x, testPoint.y, testPoint.radius, 0, Math.PI*2);
+            ctx.fillStyle = '#f1c40f'; 
+            // 添加光晕效果
+            ctx.shadowColor = '#f1c40f';
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.shadowBlur = 0; // 重置阴影
+
+            ctx.strokeStyle = '#e67e22';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText("P", testPoint.x + 12, testPoint.y - 12);
+
+            // 绘制场强矢量 E
+            if (sourceQ !== 0 && r_pixels > 5) {
+                let angle = Math.atan2(dy, dx);
+                if (sourceQ < 0) angle += Math.PI;
+
+                // 矢量长度可视化 (使用对数缩放，但限制最大长度)
+                let vectorBaseLen = Math.log10(E_val + 1) * 15;
+                const vectorLen = Math.min(120, Math.max(20, vectorBaseLen)); // 限制在 20px 到 120px 之间
+
+                const endX = testPoint.x + Math.cos(angle) * vectorLen;
+                const endY = testPoint.y + Math.sin(angle) * vectorLen;
+
+                const vectorColor = '#27ae60';
+                ctx.beginPath();
+                ctx.moveTo(testPoint.x, testPoint.y);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = vectorColor;
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+
+                drawArrowHead(endX, endY, angle, 12, vectorColor);
+                
+                ctx.fillStyle = vectorColor;
+                ctx.font = 'bold 16px Arial';
+                ctx.fillText("E", endX + 15, endY);
+            }
+        }
+
+        function drawArrowHead(x, y, angle, size, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-size, -size*0.6);
+            ctx.lineTo(-size*0.7, 0); // 稍微内凹的箭头
+            ctx.lineTo(-size, size*0.6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        draw();
+
+    </script>
+</body>
+</html>

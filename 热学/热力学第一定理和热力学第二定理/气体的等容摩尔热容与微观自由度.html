@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>气体微观自由度与摩尔热容</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #2c3e50;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h2 { margin-bottom: 5px; }
+        .description {
+            max-width: 900px;
+            text-align: center;
+            margin-bottom: 20px;
+            color: #555;
+            line-height: 1.5;
+        }
+        .main-container {
+            display: flex;
+            gap: 20px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+            width: 100%;
+            max-width: 1000px;
+        }
+        
+        /* 左侧控制面板 */
+        .control-panel {
+            flex: 1;
+            padding-right: 20px;
+            border-right: 1px solid #eee;
+        }
+        .control-group { margin-bottom: 20px; }
+        .control-group h3 {
+            font-size: 1.1em;
+            color: #2980b9;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+        }
+        .radio-label {
+            display: block;
+            margin-bottom: 10px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .checkbox-label {
+            display: inline-block;
+            margin: 5px 10px 5px 0;
+            padding: 8px 12px;
+            background: #ecf0f1;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .checkbox-label:hover { background: #d0d3d4; }
+        .checkbox-label input:disabled + span { color: #aaa; }
+        .checkbox-label.disabled { background: #f9f9f9; cursor: not-allowed; opacity: 0.6; }
+
+        /* 中间 3D 画布 */
+        .canvas-container {
+            flex: 2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #2c3e50;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        #canvas3d { width: 100%; height: 350px; outline: none; }
+        .axis-label {
+            position: absolute;
+            color: rgba(255,255,255,0.7);
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        /* 右侧公式与能量面板 */
+        .math-panel {
+            flex: 1.2;
+            padding-left: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        .energy-bar-container {
+            background: #ecf0f1;
+            border-radius: 8px;
+            height: 30px;
+            display: flex;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        .energy-block {
+            flex: 1;
+            border-right: 1px solid rgba(255,255,255,0.5);
+            transition: background-color 0.3s, transform 0.3s;
+            background-color: #bdc3c7; /* 默认灰色（未激活） */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .energy-block.active-trans { background-color: #e74c3c; } /* 平动动能红色 */
+        .energy-block.active-rot { background-color: #f1c40f; color: #333; } /* 转动动能黄色 */
+        
+        .formula-box {
+            background: #fdfefe;
+            border: 1px solid #e1e8ed;
+            border-left: 4px solid #2ecc71;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>分子微观自由度与能量均分定理</h2>
+    <div class="description">
+        选择不同的气体分子模型，并开启其运动自由度（平动与转动）。根据<b>能量均分定理</b>，处于平衡态的系统中，分子每一个自由度都平均分配着 \(\frac{1}{2}kT\) 的能量。你可以直观看到自由度 \(i\) 是如何决定等容摩尔热容 \(C_V\) 的。
+    </div>
+    
+    
+
+    <div class="main-container">
+        <div class="control-panel">
+            <div class="control-group">
+                <h3>1. 选择分子类型</h3>
+                <label class="radio-label">
+                    <input type="radio" name="molType" value="mono" checked> 单原子气体 (如 He, \(i=3\))
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="molType" value="di"> 双原子气体 (如 O₂, \(i=5\))
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="molType" value="poly"> 多原子气体 (如 H₂O, \(i=6\))
+                </label>
+            </div>
+
+            <div class="control-group">
+                <h3>2. 激发运动自由度 ( \(\times \frac{1}{2}kT\) )</h3>
+                <div style="margin-bottom: 10px;"><b>平动 (Translation):</b></div>
+                <label class="checkbox-label" id="lbl-tx"><input type="checkbox" id="tx" checked> X轴平动</label>
+                <label class="checkbox-label" id="lbl-ty"><input type="checkbox" id="ty" checked> Y轴平动</label>
+                <label class="checkbox-label" id="lbl-tz"><input type="checkbox" id="tz" checked> Z轴平动</label>
+                
+                <div style="margin-top: 15px; margin-bottom: 10px;"><b>转动 (Rotation):</b></div>
+                <label class="checkbox-label disabled" id="lbl-rx"><input type="checkbox" id="rx" disabled> 绕X轴转动</label>
+                <label class="checkbox-label disabled" id="lbl-ry"><input type="checkbox" id="ry" disabled> 绕Y轴转动</label>
+                <label class="checkbox-label disabled" id="lbl-rz"><input type="checkbox" id="rz" disabled> 绕Z轴转动</label>
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <div id="canvas3d"></div>
+            <div class="axis-label" style="right: 10px; bottom: 50%;">X轴 (红)</div>
+            <div class="axis-label" style="left: 50%; top: 10px;">Y轴 (绿)</div>
+            <div class="axis-label" style="left: 10px; bottom: 10px;">Z轴 (蓝)</div>
+        </div>
+
+        <div class="math-panel">
+            <h3 style="color:#2980b9; border-bottom: 2px solid #3498db; padding-bottom: 5px; margin-top:0;">能量均分与热容计算</h3>
+            
+            <p>当前激活自由度: <b id="dof-count" style="font-size: 1.5em; color: #e74c3c;">3</b></p>
+            
+            <div class="energy-bar-container" id="energyBar">
+                <div class="energy-block active-trans" id="eb-1">T_x</div>
+                <div class="energy-block active-trans" id="eb-2">T_y</div>
+                <div class="energy-block active-trans" id="eb-3">T_z</div>
+                <div class="energy-block" id="eb-4">R_x</div>
+                <div class="energy-block" id="eb-5">R_y</div>
+                <div class="energy-block" id="eb-6">R_z</div>
+            </div>
+            <p style="font-size: 0.9em; color: #7f8c8d;">(每个色块代表 \(\frac{1}{2}kT\) 的分子平均动能)</p>
+
+            <div class="formula-box">
+                <div id="math-energy">
+                    分子平均总动能: <br>
+                    \(\bar{\varepsilon} = \frac{3}{2}kT\)
+                </div>
+                <hr style="border:0; border-top:1px dashed #ccc; margin: 15px 0;">
+                <div id="math-cv">
+                    等容摩尔热容: <br>
+                    \(C_{V} = \frac{N_A}{1} \frac{\mathrm{d}\bar{\varepsilon}}{\mathrm{d}T} = \frac{3}{2}R\)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Three.js 场景初始化 ---
+        const container = document.getElementById('canvas3d');
+        const scene = new THREE.Scene();
+        // 添加坐标轴辅助线 (长度, 红色X, 绿色Y, 蓝色Z)
+        const axesHelper = new THREE.AxesHelper( 5 );
+        scene.add( axesHelper );
+
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+        camera.position.set(6, 4, 8);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(renderer.domElement);
+
+        // 光源
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // --- 2. 分子模型构建 ---
+        const materialAtoms = new THREE.MeshStandardMaterial({ color: 0x3498db, roughness: 0.4, metalness: 0.1 });
+        const materialBonds = new THREE.MeshStandardMaterial({ color: 0x95a5a6 });
+        
+        let currentMoleculeGroup = new THREE.Group();
+        scene.add(currentMoleculeGroup);
+
+        function createMonoatomic() {
+            const geometry = new THREE.SphereGeometry(1, 32, 32);
+            const sphere = new THREE.Mesh(geometry, materialAtoms);
+            return sphere;
+        }
+
+        function createDiatomic() {
+            const group = new THREE.Group();
+            const geoSphere = new THREE.SphereGeometry(0.8, 32, 32);
+            const geoCyl = new THREE.CylinderGeometry(0.2, 0.2, 2.5, 16);
+            
+            const atom1 = new THREE.Mesh(geoSphere, materialAtoms);
+            atom1.position.x = -1.25;
+            const atom2 = new THREE.Mesh(geoSphere, materialAtoms);
+            atom2.position.x = 1.25;
+            
+            const bond = new THREE.Mesh(geoCyl, materialBonds);
+            bond.rotation.z = Math.PI / 2; // 使键沿 X 轴
+            
+            group.add(atom1); group.add(atom2); group.add(bond);
+            return group;
+        }
+
+        function createPolyatomic() {
+            // 类似 H2O 的折线结构
+            const group = new THREE.Group();
+            const geoBig = new THREE.SphereGeometry(0.9, 32, 32);
+            const geoSmall = new THREE.SphereGeometry(0.6, 32, 32);
+            const geoCyl = new THREE.CylinderGeometry(0.15, 0.15, 1.8, 16);
+            
+            const atomO = new THREE.Mesh(geoBig, new THREE.MeshStandardMaterial({ color: 0xe74c3c }));
+            const atomH1 = new THREE.Mesh(geoSmall, materialAtoms);
+            const atomH2 = new THREE.Mesh(geoSmall, materialAtoms);
+            
+            atomH1.position.set(-1.2, -0.8, 0);
+            atomH2.position.set(1.2, -0.8, 0);
+            atomO.position.set(0, 0.4, 0);
+
+            const bond1 = new THREE.Mesh(geoCyl, materialBonds);
+            bond1.position.set(-0.6, -0.2, 0);
+            bond1.rotation.z = -Math.PI / 4;
+
+            const bond2 = new THREE.Mesh(geoCyl, materialBonds);
+            bond2.position.set(0.6, -0.2, 0);
+            bond2.rotation.z = Math.PI / 4;
+
+            group.add(atomO); group.add(atomH1); group.add(atomH2);
+            group.add(bond1); group.add(bond2);
+            return group;
+        }
+
+        // --- 3. 交互逻辑与状态管理 ---
+        const controls = {
+            tx: true, ty: true, tz: true,
+            rx: false, ry: false, rz: false
+        };
+
+        const molConfig = {
+            'mono': { builder: createMonoatomic, rotAxes: [] },
+            'di':   { builder: createDiatomic, rotAxes: ['y', 'z'] }, // X轴是分子键方向，转动惯量极小不计
+            'poly': { builder: createPolyatomic, rotAxes: ['x', 'y', 'z'] }
+        };
+
+        function updateMolecule() {
+            const type = document.querySelector('input[name="molType"]:checked').value;
+            const config = molConfig[type];
+
+            // 移除旧模型
+            scene.remove(currentMoleculeGroup);
+            currentMoleculeGroup = config.builder();
+            scene.add(currentMoleculeGroup);
+
+            // 更新复选框可用状态
+            ['x', 'y', 'z'].forEach(axis => {
+                const cb = document.getElementById('r' + axis);
+                const lbl = document.getElementById('lbl-r' + axis);
+                if (config.rotAxes.includes(axis)) {
+                    cb.disabled = false;
+                    lbl.classList.remove('disabled');
+                } else {
+                    cb.disabled = true;
+                    cb.checked = false;
+                    lbl.classList.add('disabled');
+                    controls['r' + axis] = false;
+                }
+            });
+            updateMathAndUI();
+        }
+
+        function updateMathAndUI() {
+            let i = 0;
+            // 更新 UI 块和计数
+            ['tx', 'ty', 'tz'].forEach((id, index) => {
+                controls[id] = document.getElementById(id).checked;
+                if(controls[id]) i++;
+                document.getElementById('eb-' + (index+1)).className = controls[id] ? 'energy-block active-trans' : 'energy-block';
+            });
+            
+            ['rx', 'ry', 'rz'].forEach((id, index) => {
+                controls[id] = document.getElementById(id).checked;
+                if(controls[id]) i++;
+                document.getElementById('eb-' + (index+4)).className = controls[id] ? 'energy-block active-rot' : 'energy-block';
+            });
+
+            document.getElementById('dof-count').innerText = i;
+
+            // 更新 MathJax 公式
+            const mathEnergy = document.getElementById('math-energy');
+            const mathCv = document.getElementById('math-cv');
+            
+            mathEnergy.innerHTML = `分子平均总动能: <br> \\(\\bar{\\varepsilon} = \\frac{${i}}{2}kT\\)`;
+            mathCv.innerHTML = `等容摩尔热容: <br> \\(C_{V} = \\frac{N_A}{1} \\frac{\\mathrm{d}\\bar{\\varepsilon}}{\\mathrm{d}T} = \\frac{${i}}{2}R\\)`;
+            
+            // 通知 MathJax 重新排版新插入的公式
+            if(window.MathJax) {
+                MathJax.typesetPromise([mathEnergy, mathCv]);
+            }
+        }
+
+        // 绑定事件监听
+        document.querySelectorAll('input[name="molType"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                // 切换分子时，默认选中允许的所有自由度
+                const type = radio.value;
+                const config = molConfig[type];
+                ['tx','ty','tz'].forEach(id => document.getElementById(id).checked = true);
+                ['rx','ry','rz'].forEach(id => {
+                    const cb = document.getElementById(id);
+                    cb.checked = config.rotAxes.includes(id.charAt(1));
+                });
+                updateMolecule();
+            });
+        });
+
+        document.querySelectorAll('.checkbox-label input').forEach(cb => {
+            cb.addEventListener('change', updateMathAndUI);
+        });
+
+        // 初始化
+        updateMolecule();
+
+        // --- 4. 动画循环 ---
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            // 平动 (利用正弦波模拟热运动振荡)
+            const speed = 5;
+            const amplitude = 1.5;
+            currentMoleculeGroup.position.x = controls.tx ? Math.sin(time * speed) * amplitude : 0;
+            currentMoleculeGroup.position.y = controls.ty ? Math.sin(time * speed * 1.2) * amplitude : 0;
+            currentMoleculeGroup.position.z = controls.tz ? Math.sin(time * speed * 0.8) * amplitude : 0;
+
+            // 转动
+            const rotSpeed = 0.05;
+            if (controls.rx) currentMoleculeGroup.rotation.x += rotSpeed;
+            else currentMoleculeGroup.rotation.x = 0; // 不勾选时复位，方便观察
+            
+            if (controls.ry) currentMoleculeGroup.rotation.y += rotSpeed;
+            else currentMoleculeGroup.rotation.y = 0;
+
+            if (controls.rz) currentMoleculeGroup.rotation.z += rotSpeed;
+            else currentMoleculeGroup.rotation.z = 0;
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 窗口缩放适配
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+    </script>
+</body>
+</html>

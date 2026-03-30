@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>熵的微观统计意义与玻尔兹曼关系</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            color: #2c3e50;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h2 { margin-bottom: 5px; color: #1a252f; }
+        .description {
+            max-width: 900px;
+            text-align: center;
+            margin-bottom: 25px;
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .main-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        /* 左侧：可视化动画区 */
+        .simulation-panel {
+            flex: 1.5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #fafbfc;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e1e8ed;
+        }
+        
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            height: 300px;
+            background: #111; /* 黑色背景凸显粒子 */
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 隔板 UI */
+        .partition {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 6px;
+            height: 100%;
+            background: #f1c40f;
+            transform: translateX(-50%);
+            box-shadow: 0 0 10px #f1c40f;
+            transition: top 0.5s ease-in-out;
+            z-index: 10;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.1s, filter 0.2s;
+        }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+        button:active { transform: translateY(0); }
+        .btn-remove { background: #e74c3c; }
+        .btn-reset { background: #3498db; }
+
+        /* 右侧：统计数据与数学公式区 */
+        .data-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #e8f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid #2980b9;
+        }
+
+        .data-box {
+            background: #fff;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border: 1px solid #dcdde1;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+        .data-row span { font-weight: bold; font-family: monospace; }
+        .val-left { color: #3498db; }
+        .val-right { color: #e74c3c; }
+
+        .omega-display {
+            font-size: 1.3em;
+            text-align: center;
+            color: #8e44ad;
+            margin: 10px 0;
+            font-weight: bold;
+            word-break: break-all;
+        }
+
+        .entropy-display {
+            font-size: 1.4em;
+            text-align: center;
+            color: #27ae60;
+            margin: 10px 0;
+            font-weight: bold;
+            background: #ecf0f1;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        /* 概率进度条 */
+        .progress-bar {
+            width: 100%;
+            height: 12px;
+            background: #ecf0f1;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #8e44ad;
+            width: 0%;
+            transition: width 0.2s;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>熵增原理：微观状态数与混乱度</h2>
+    <div class="description">
+        盒子里共有 <b>40</b> 个气体分子。初始状态下，它们全被隔板限制在左侧。<br>
+        点击“抽走隔板”，分子开始随机热运动。观察右侧实时计算的<b>微观状态数 \(\omega\)</b>。你会发现，分子均匀分布在两侧时（最混乱），对应的 \(\omega\) 是天文数字；而所有分子自发回到左侧的 \(\omega\) 只有 1。<b>系统总是自发向微观状态数最大的宏观态演化，这就是熵增的微观本质。</b>
+    </div>
+
+    <div class="main-container">
+        
+        <div class="simulation-panel">
+            <div class="canvas-wrapper">
+                <canvas id="gasCanvas" width="600" height="300"></canvas>
+                <div class="partition" id="partition"></div>
+            </div>
+            
+            <div class="controls">
+                <button class="btn-remove" id="btn-remove" onclick="removePartition()">⬆ 抽走隔板</button>
+                <button class="btn-reset" onclick="resetSimulation()">↺ 恢复初始状态</button>
+            </div>
+        </div>
+
+        <div class="data-panel">
+            
+            <div class="data-box">
+                <h3 style="margin-top:0; color:#2c3e50; border-bottom:1px solid #eee; padding-bottom:5px;">宏观态 (粒子分布)</h3>
+                <div class="data-row">左侧粒子数 \(N_L\) : <span class="val-left" id="val-nl">40</span></div>
+                <div class="data-row">右侧粒子数 \(N_R\) : <span class="val-right" id="val-nr">0</span></div>
+            </div>
+
+            <div class="data-box">
+                <h3 style="margin-top:0; color:#8e44ad; border-bottom:1px solid #eee; padding-bottom:5px;">微观状态数 \(\omega\)</h3>
+                <div style="font-size:0.9em; color:#7f8c8d; text-align:center;">
+                    从40个位置中选出 \(N_L\) 个位置的组合数：\(C_{40}^{N_L}\)
+                </div>
+                <div class="omega-display" id="val-omega">1</div>
+                
+                <div style="font-size:0.85em; color:#7f8c8d; margin-top:10px;">分布概率占比 (相对于最大值)</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="omega-bar"></div>
+                </div>
+            </div>
+
+            <div class="data-box" style="border-color:#27ae60; background:#f0fbf4;">
+                <h3 style="margin-top:0; color:#27ae60; border-bottom:1px solid #c8e6c9; padding-bottom:5px;">系统熵 \(S\)</h3>
+                <div style="font-size:0.9em; color:#555; text-align:center;">
+                    玻尔兹曼关系式：\(S = k \ln \omega\)
+                </div>
+                <div class="entropy-display">
+                    \(S/k \approx\) <span id="val-entropy">0.00</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- 数学计算辅助函数 ---
+        // 计算组合数 C(n, k)
+        function combinations(n, k) {
+            if (k < 0 || k > n) return 0;
+            if (k === 0 || k === n) return 1;
+            if (k > n / 2) k = n - k; // 优化计算
+            let res = 1;
+            for (let i = 1; i <= k; i++) {
+                res = res * (n - i + 1) / i;
+            }
+            return res;
+        }
+
+        // --- 物理与动画参数 ---
+        const canvas = document.getElementById('gasCanvas');
+        const ctx = canvas.getContext('2d');
+        const partitionDOM = document.getElementById('partition');
+        const btnRemove = document.getElementById('btn-remove');
+        
+        const N = 40; // 粒子总数
+        const MAX_OMEGA = combinations(N, N / 2); // 理论最大微观状态数 C(40, 20) = 137,846,528,820
+        const RADIUS = 4;
+        const SPEED = 4; // 粒子运动速度
+
+        let particles = [];
+        let isPartitionPresent = true;
+        let animationId;
+        
+        // 性能优化：避免每帧都更新 DOM，只有当左侧粒子数改变时才更新
+        let lastNL = -1; 
+
+        // --- 初始化粒子 ---
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < N; i++) {
+                // 初始全部在左侧 (x < 300)
+                particles.push({
+                    x: Math.random() * (canvas.width / 2 - RADIUS * 3) + RADIUS,
+                    y: Math.random() * (canvas.height - RADIUS * 2) + RADIUS,
+                    vx: (Math.random() - 0.5) * SPEED * 2,
+                    vy: (Math.random() - 0.5) * SPEED * 2,
+                    // 随机赋予蓝色或偏白色的发光感
+                    color: Math.random() > 0.5 ? '#00d2d3' : '#48dbfb' 
+                });
+            }
+        }
+
+        // --- 交互控制 ---
+        function removePartition() {
+            isPartitionPresent = false;
+            partitionDOM.style.top = '-100%'; // CSS 动画抽走隔板
+            btnRemove.disabled = true;
+            btnRemove.style.opacity = '0.5';
+        }
+
+        function resetSimulation() {
+            isPartitionPresent = true;
+            partitionDOM.style.top = '0';
+            btnRemove.disabled = false;
+            btnRemove.style.opacity = '1';
+            lastNL = -1;
+            initParticles();
+        }
+
+        // --- 物理更新与渲染循环 ---
+        function updateAndDraw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            let currentNL = 0;
+
+            // 物理碰撞与位移计算
+            for (let i = 0; i < N; i++) {
+                let p = particles[i];
+                
+                // 移动
+                p.x += p.vx;
+                p.y += p.vy;
+
+                // 边界碰撞反弹
+                if (p.y - RADIUS < 0 || p.y + RADIUS > canvas.height) {
+                    p.vy *= -1;
+                    p.y = p.y < RADIUS ? RADIUS : canvas.height - RADIUS;
+                }
+                if (p.x - RADIUS < 0 || p.x + RADIUS > canvas.width) {
+                    p.vx *= -1;
+                    p.x = p.x < RADIUS ? RADIUS : canvas.width - RADIUS;
+                }
+
+                // 隔板碰撞反弹 (如果隔板还在，且粒子在左侧)
+                if (isPartitionPresent && p.x + RADIUS > canvas.width / 2) {
+                    p.vx *= -1;
+                    p.x = canvas.width / 2 - RADIUS;
+                }
+
+                // 统计左侧粒子数
+                if (p.x < canvas.width / 2) {
+                    currentNL++;
+                }
+
+                // 绘制粒子 (带发光效果)
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, RADIUS, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.shadowColor = p.color;
+                ctx.shadowBlur = 8;
+                ctx.fill();
+                ctx.shadowBlur = 0; // 重置
+            }
+
+            // 如果左右分布发生变化，更新数学公式区
+            if (currentNL !== lastNL) {
+                updateMathData(currentNL);
+                lastNL = currentNL;
+            }
+
+            animationId = requestAnimationFrame(updateAndDraw);
+        }
+
+        // --- 更新数据面板 ---
+        function updateMathData(nl) {
+            const nr = N - nl;
+            const omega = combinations(N, nl);
+            const entropyStr = omega === 0 ? "0.00" : Math.log(omega).toFixed(2);
+            
+            // 格式化天文数字 (加逗号)
+            const omegaStr = omega.toLocaleString('en-US');
+
+            document.getElementById('val-nl').innerText = nl;
+            document.getElementById('val-nr').innerText = nr;
+            document.getElementById('val-omega').innerText = omegaStr;
+            document.getElementById('val-entropy').innerText = entropyStr;
+
+            // 更新概率进度条 (对数缩放以展示视觉差异，否则其他状态连一条线都看不到)
+            // 这里为了视觉效果，用线性比例展示
+            const ratio = (omega / MAX_OMEGA) * 100;
+            document.getElementById('omega-bar').style.width = ratio + '%';
+        }
+
+        // 启动
+        initParticles();
+        updateAndDraw();
+
+    </script>
+</body>
+</html>

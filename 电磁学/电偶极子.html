@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>电偶极子场强：模型与演变</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --accent: #38bdf8;
+            --text: #f1f5f9;
+            --exact-color: #f43f5e; /* 红色：精确值 */
+            --approx-color: #3b82f6; /* 蓝色：近似值 */
+        }
+        body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+        
+        /* 布局容器 */
+        .container { display: flex; width: 100%; height: 100%; }
+        
+        /* 左侧：物理实验室 */
+        .lab-area { flex: 1; position: relative; border-right: 1px solid #334155; }
+        canvas#labCanvas { display: block; width: 100%; height: 100%; cursor: ns-resize; } /* 鼠标提示可上下拖动P点 */
+
+        /* 右侧：控制与图表 */
+        .sidebar { width: 400px; background: var(--panel); display: flex; flex-direction: column; padding: 20px; gap: 15px; box-shadow: -5px 0 20px rgba(0,0,0,0.3); overflow-y: auto; }
+
+        /* 图表区域 */
+        .chart-container {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            height: 250px;
+            position: relative;
+            margin-bottom: 10px;
+        }
+        canvas#graphCanvas { width: 100%; height: 100%; display: block; }
+
+        /* 控件样式 */
+        .control-card { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
+        h2 { margin: 0 0 10px 0; font-size: 1.1rem; color: #fff; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        h3 { margin: 0 0 10px 0; font-size: 0.9rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+
+        label { display: flex; justify-content: space-between; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 5px; }
+        input[type="range"] { width: 100%; margin-bottom: 10px; cursor: pointer; accent-color: var(--accent); }
+        
+        .formula-box {
+            font-size: 0.9rem; text-align: center; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 8px;
+        }
+        .legend { font-size: 0.8rem; display: flex; gap: 15px; justify-content: center; margin-top: 5px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        
+        /* 浮动提示 */
+        .overlay-tip {
+            position: absolute; top: 20px; left: 20px; 
+            background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 20px;
+            pointer-events: none; font-size: 0.85rem; color: rgba(255,255,255,0.7);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="lab-area">
+        <canvas id="labCanvas"></canvas>
+        <div class="overlay-tip">🖱️ 拖动 P 点改变高度 y</div>
+    </div>
+
+    <div class="sidebar">
+        <h2>电偶极子中垂线场强</h2>
+
+        <div class="chart-container">
+            <canvas id="graphCanvas"></canvas>
+        </div>
+        <div class="legend">
+            <span><span class="dot" style="background:var(--exact-color)"></span>精确值 (Exact)</span>
+            <span><span class="dot" style="background:var(--approx-color)"></span>近似值 ($1/y^3$)</span>
+        </div>
+
+        <div class="control-card">
+            <h3>模型参数</h3>
+            <label>偶极子间距 ($l$): <span id="val-l">100</span></label>
+            <input type="range" id="slider-l" min="20" max="200" value="100">
+            
+            <label>观测距离 ($y$): <span id="val-y">150</span></label>
+            <input type="range" id="slider-y" min="20" max="400" value="150">
+        </div>
+
+        <div class="control-card">
+            <h3>数学原理</h3>
+            <div class="formula-box" style="border-left: 3px solid var(--exact-color);">
+                精确值：$$E = \frac{kql}{(y^2 + l^2/4)^{3/2}}$$
+            </div>
+            <div class="formula-box" style="border-left: 3px solid var(--approx-color);">
+                远场近似 ($y \gg l$)：$$E \approx \frac{kql}{y^3}$$
+            </div>
+            <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 5px;">
+                当 $y$ 增大时，两线逐渐重合。
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // === 1. 初始化画布 ===
+    const labCanvas = document.getElementById('labCanvas');
+    const labCtx = labCanvas.getContext('2d');
+    const graphCanvas = document.getElementById('graphCanvas');
+    const graphCtx = graphCanvas.getContext('2d');
+
+    // === 2. 物理状态 ===
+    let state = {
+        l: 100,      // 间距 l (px)
+        y: 150,      // 距离 y (px)
+        q: 20,       // 电荷量 (视觉系数)
+        k: 500000    // 库仑常数 (视觉系数)
+    };
+
+    let isDraggingP = false;
+
+    // === 3. 主循环 ===
+    function init() {
+        resize();
+        window.addEventListener('resize', resize);
+        
+        // 交互事件
+        labCanvas.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', () => isDraggingP = false);
+
+        // 滑块事件
+        document.getElementById('slider-l').addEventListener('input', (e) => {
+            state.l = parseInt(e.target.value);
+            document.getElementById('val-l').innerText = state.l;
+        });
+        document.getElementById('slider-y').addEventListener('input', (e) => {
+            state.y = parseInt(e.target.value);
+            document.getElementById('val-y').innerText = state.y;
+        });
+
+        animate();
+    }
+
+    function resize() {
+        labCanvas.width = labCanvas.offsetWidth;
+        labCanvas.height = labCanvas.offsetHeight;
+        graphCanvas.width = graphCanvas.offsetWidth;
+        graphCanvas.height = graphCanvas.offsetHeight;
+    }
+
+    // === 4. 绘图逻辑 ===
+    function animate() {
+        // 清空画布
+        labCtx.clearRect(0, 0, labCanvas.width, labCanvas.height);
+        graphCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+
+        drawLabScene();
+        drawGraphScene();
+
+        requestAnimationFrame(animate);
+    }
+
+    // --- A. 物理实验室视图 ---
+    function drawLabScene() {
+        const cx = labCanvas.width / 2;
+        const cy = labCanvas.height * 0.7; // 将原点放在中下方
+
+        // 1. 绘制电荷
+        const halfL = state.l / 2;
+        const posQ = { x: cx - halfL, y: cy, color: '#ef4444', label: '+q' }; // 左边放+q (根据图3.1.7)
+        const negQ = { x: cx + halfL, y: cy, color: '#3b82f6', label: '-q' }; // 右边放-q
+        
+        // 绘制中垂线
+        labCtx.beginPath();
+        labCtx.setLineDash([5, 5]);
+        labCtx.moveTo(cx, cy);
+        labCtx.lineTo(cx, cy - state.y);
+        labCtx.strokeStyle = 'rgba(255,255,255,0.2)';
+        labCtx.stroke();
+        labCtx.setLineDash([]);
+
+        // 绘制 P 点
+        const px = cx;
+        const py = cy - state.y;
+
+        // 2. 计算矢量
+        // r^2 = y^2 + (l/2)^2
+        const r2 = state.y * state.y + halfL * halfL;
+        const r = Math.sqrt(r2);
+        
+        // 单个电荷产生的场强大小 E1 = kq / r^2
+        const E_mag = state.k * state.q / r2; 
+        
+        // 分量计算
+        // cos(theta) = (l/2) / r
+        // sin(theta) = y / r
+        const cosTheta = halfL / r;
+        const sinTheta = state.y / r;
+
+        // E+ (来自 +q): 方向指向右上
+        const Ex_plus = E_mag * cosTheta;
+        const Ey_plus = -E_mag * sinTheta; // 向上为负
+
+        // E- (来自 -q): 方向指向右下 (被吸引)
+        const Ex_minus = E_mag * cosTheta;
+        const Ey_minus = E_mag * sinTheta; // 向下为正
+
+        // E_total (合矢量): 水平向右
+        const E_total = 2 * Ex_plus;
+
+        // 视觉缩放因子 (防止箭头太长或太短)
+        const scale = 80; 
+
+        // 3. 绘制矢量箭头
+        // E+ (红色虚线)
+        drawArrow(labCtx, px, py, Ex_plus * scale, Ey_plus * scale, 'rgba(239,68,68,0.5)', 'E+');
+        // E- (蓝色虚线)
+        drawArrow(labCtx, px, py, Ex_minus * scale, Ey_minus * scale, 'rgba(59,130,246,0.5)', 'E-');
+        // E_total (绿色实线)
+        drawArrow(labCtx, px, py, E_total * scale, 0, '#4ade80', 'E', true);
+
+        // 绘制连线 (+q -> P, -q -> P)
+        labCtx.beginPath();
+        labCtx.moveTo(posQ.x, posQ.y); labCtx.lineTo(px, py);
+        labCtx.moveTo(negQ.x, negQ.y); labCtx.lineTo(px, py);
+        labCtx.strokeStyle = 'rgba(255,255,255,0.1)';
+        labCtx.stroke();
+
+        // 绘制电荷体
+        [posQ, negQ].forEach(c => {
+            labCtx.beginPath();
+            labCtx.arc(c.x, c.y, 12, 0, Math.PI*2);
+            labCtx.fillStyle = c.color;
+            labCtx.fill();
+            labCtx.fillStyle = '#fff';
+            labCtx.textAlign = 'center';
+            labCtx.textBaseline = 'middle';
+            labCtx.font = 'bold 12px Arial';
+            labCtx.fillText(c.label, c.x, c.y);
+        });
+
+        // 绘制 P 点
+        labCtx.beginPath();
+        labCtx.arc(px, py, 6, 0, Math.PI*2);
+        labCtx.fillStyle = '#f59e0b';
+        labCtx.fill();
+        labCtx.fillStyle = '#fff';
+        labCtx.fillText('P', px + 10, py - 10);
+        
+        // 显示距离标注
+        labCtx.fillStyle = 'rgba(255,255,255,0.5)';
+        labCtx.fillText(`y = ${state.y}`, cx + 5, cy - state.y/2);
+        labCtx.fillText(`l = ${state.l}`, cx, cy + 20);
+    }
+
+    // --- B. 数据图表视图 (核心：比较精确与近似) ---
+    function drawGraphScene() {
+        const w = graphCanvas.width;
+        const h = graphCanvas.height;
+        const padding = 30;
+
+        // 坐标系
+        graphCtx.strokeStyle = '#334155';
+        graphCtx.lineWidth = 1;
+        graphCtx.beginPath();
+        // X轴 (y距离)
+        graphCtx.moveTo(padding, h - padding);
+        graphCtx.lineTo(w - padding, h - padding);
+        // Y轴 (E大小)
+        graphCtx.moveTo(padding, h - padding);
+        graphCtx.lineTo(padding, padding);
+        graphCtx.stroke();
+        
+        graphCtx.fillStyle = '#64748b';
+        graphCtx.font = '10px Arial';
+        graphCtx.fillText('距离 y', w - 40, h - 10);
+        graphCtx.fillText('场强 E', 5, 20);
+
+        // 绘图参数
+        const maxY = 400; // x轴最大值
+        const step = 2;
+        
+        // 比例尺
+        const xScale = (w - 2 * padding) / maxY;
+        // 动态计算y轴比例尺：以 y=50 处的精确值为基准，防止图形溢出
+        const baseL = state.l;
+        const refY = 50; 
+        const refE = calcExact(refY, baseL); 
+        const yScale = (h - 2 * padding) / refE * 0.8; 
+
+        // 1. 绘制精确曲线 (红色实线)
+        graphCtx.beginPath();
+        for(let iy = 10; iy <= maxY; iy += step) {
+            const val = calcExact(iy, state.l);
+            const gx = padding + iy * xScale;
+            const gy = (h - padding) - val * yScale;
+            if(iy === 10) graphCtx.moveTo(gx, Math.min(gy, h-padding)); // Clamp
+            else graphCtx.lineTo(gx, Math.max(padding, gy));
+        }
+        graphCtx.strokeStyle = '#f43f5e';
+        graphCtx.lineWidth = 2;
+        graphCtx.stroke();
+
+        // 2. 绘制近似曲线 (蓝色虚线) - 1/y^3
+        graphCtx.beginPath();
+        graphCtx.setLineDash([4, 4]);
+        for(let iy = 10; iy <= maxY; iy += step) {
+            const val = calcApprox(iy, state.l);
+            const gx = padding + iy * xScale;
+            const gy = (h - padding) - val * yScale;
+            // 避免 y=0 附近的无穷大
+            if (gy < padding) continue; 
+            if(iy === 10 || gy > h-padding) graphCtx.moveTo(gx, Math.min(gy, h-padding));
+            else graphCtx.lineTo(gx, gy);
+        }
+        graphCtx.strokeStyle = '#3b82f6';
+        graphCtx.stroke();
+        graphCtx.setLineDash([]);
+
+        // 3. 绘制当前状态点
+        const curExact = calcExact(state.y, state.l);
+        const curGx = padding + state.y * xScale;
+        const curGy = (h - padding) - curExact * yScale;
+
+        // 如果点在可视范围内
+        if (curGy >= padding && curGx <= w-padding) {
+            graphCtx.beginPath();
+            graphCtx.arc(curGx, curGy, 5, 0, Math.PI*2);
+            graphCtx.fillStyle = '#fff';
+            graphCtx.fill();
+            graphCtx.strokeStyle = '#f59e0b'; // P点颜色
+            graphCtx.stroke();
+            
+            // 绘制垂直指示线
+            graphCtx.beginPath();
+            graphCtx.moveTo(curGx, h - padding);
+            graphCtx.lineTo(curGx, curGy);
+            graphCtx.strokeStyle = 'rgba(255,255,255,0.2)';
+            graphCtx.stroke();
+        }
+    }
+
+    // --- 数学计算函数 ---
+    
+    // 精确公式: E = kql / (y^2 + l^2/4)^(3/2)
+    function calcExact(y, l) {
+        const p = state.k * state.q * l; // 偶极矩 p ~ ql
+        const denom = Math.pow(y*y + l*l/4, 1.5);
+        return p / denom;
+    }
+
+    // 近似公式: E = kql / y^3
+    function calcApprox(y, l) {
+        const p = state.k * state.q * l;
+        return p / Math.pow(y, 3);
+    }
+
+    // --- 辅助绘制 ---
+    function drawArrow(ctx, x, y, vx, vy, color, label, isBold=false) {
+        const mag = Math.sqrt(vx*vx + vy*vy);
+        if(mag < 5) return;
+        
+        const endX = x + vx;
+        const endY = y + vy;
+        const angle = Math.atan2(vy, vx);
+        const headLen = isBold ? 12 : 8;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(endX, endY);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = isBold ? 4 : 2;
+        if(!isBold) ctx.setLineDash([3, 3]); // 分量用虚线
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 箭头
+        ctx.beginPath();
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - headLen * Math.cos(angle - Math.PI/6), endY - headLen * Math.sin(angle - Math.PI/6));
+        ctx.lineTo(endX - headLen * Math.cos(angle + Math.PI/6), endY - headLen * Math.sin(angle + Math.PI/6));
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        if(label) {
+            ctx.fillStyle = color;
+            ctx.font = '12px Arial';
+            ctx.fillText(label, endX + 5, endY - 5);
+        }
+        ctx.restore();
+    }
+
+    // --- 鼠标拖拽逻辑 ---
+    function onMouseDown(e) {
+        const rect = labCanvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const cy = labCanvas.height * 0.7;
+        const cx = labCanvas.width / 2;
+        const py = cy - state.y;
+
+        // 检查是否点击了 P 点附近
+        if (Math.hypot(mx - cx, my - py) < 20) {
+            isDraggingP = true;
+        }
+    }
+
+    function onMouseMove(e) {
+        if (isDraggingP) {
+            const rect = labCanvas.getBoundingClientRect();
+            const my = e.clientY - rect.top;
+            const cy = labCanvas.height * 0.7;
+            
+            // 限制拖拽范围
+            let newY = cy - my;
+            if (newY < 20) newY = 20;
+            if (newY > 400) newY = 400;
+            
+            state.y = newY;
+            // 同步更新滑块 UI
+            document.getElementById('slider-y').value = state.y;
+            document.getElementById('val-y').innerText = Math.round(state.y);
+        }
+    }
+
+    init();
+</script>
+</body>
+</html>

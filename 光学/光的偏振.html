@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>光偏振物理演示模型</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f0f0; }
+        canvas { background: #fff; box-shadow: 0 0 20px rgba(0,0,0,0.1); border-radius: 8px; margin-top: 20px; }
+        .controls { margin: 20px; padding: 20px; background: white; border-radius: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .control-group { display: flex; flex-direction: column; align-items: center; }
+        label { margin-bottom: 8px; font-weight: bold; color: #333; }
+        .info { margin-top: 10px; font-size: 0.9em; color: #666; }
+        .value-display { font-family: monospace; color: #007bff; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>光偏振物理演示 (马吕斯定律)</h2>
+
+    <canvas id="polarizationCanvas" width="800" height="400"></canvas>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>起偏器角度 (θ₁): <span id="angle1Val" class="value-display">0</span>°</label>
+            <input type="range" id="angle1" min="0" max="360" value="0">
+        </div>
+        <div class="control-group">
+            <label>检偏器角度 (θ₂): <span id="angle2Val" class="value-display">90</span>°</label>
+            <input type="range" id="angle2" min="0" max="360" value="90">
+        </div>
+        <div style="grid-column: span 2; text-align: center;" class="info">
+            相对夹角 Δθ: <span id="deltaAngle" class="value-display">90</span>° | 
+            输出光强 I = I₀ · cos²(Δθ): <span id="intensityVal" class="value-display">0</span>%
+        </div>
+    </div>
+
+<script>
+const canvas = document.getElementById('polarizationCanvas');
+const ctx = canvas.getContext('2d');
+const slider1 = document.getElementById('angle1');
+const slider2 = document.getElementById('angle2');
+
+let angle1 = 0;
+let angle2 = 90;
+
+function toRad(deg) { return deg * (Math.PI / 180); }
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    const centerY = canvas.height / 2;
+    const startX = 50;
+    const p1X = 300;
+    const p2X = 550;
+    const endX = 750;
+
+    // --- 1. 自然光段 (左侧) ---
+    drawLightRay(startX, p1X, centerY, "natural", 0);
+    drawLabel(startX + 50, centerY + 80, "自然光");
+
+    // --- 2. 第一偏振片 (起偏器) ---
+    drawPolarizer(p1X, centerY, angle1, "起偏器 (P1)");
+
+    // --- 3. 线偏振光段 (中间) ---
+    drawLightRay(p1X, p2X, centerY, "polarized", angle1);
+    drawLabel(p1X + 60, centerY + 80, "线偏振光");
+
+    // --- 4. 第二偏振片 (检偏器) ---
+    drawPolarizer(p2X, centerY, angle2, "检偏器 (P2)");
+
+    // --- 5. 最终出射光段 (右侧) ---
+    const delta = Math.abs(angle1 - angle2);
+    const intensity = Math.pow(Math.cos(toRad(delta)), 2);
+    drawLightRay(p2X, endX, centerY, "polarized", angle2, intensity);
+    drawLabel(p2X + 50, centerY + 80, "出射光");
+
+    updateUI(intensity);
+    requestAnimationFrame(draw);
+}
+
+function drawLightRay(xStart, xEnd, y, type, angle, intensity = 1.0) {
+    const step = 40;
+    ctx.lineWidth = 1.5;
+    
+    for (let x = xStart; x < xEnd; x += step) {
+        ctx.strokeStyle = `rgba(255, 165, 0, ${0.3 + intensity * 0.7})`;
+        
+        if (type === "natural") {
+            // 绘制全向振动
+            for (let a = 0; a < 180; a += 45) {
+                drawVector(x, y, a, 30);
+            }
+        } else {
+            // 绘制特定角度振动
+            drawVector(x, y, angle, 30 * Math.sqrt(intensity));
+        }
+        
+        // 绘制传播轴线
+        ctx.beginPath();
+        ctx.setLineDash([5, 5]);
+        ctx.moveTo(xStart, y);
+        ctx.lineTo(xEnd, y);
+        ctx.strokeStyle = "#ccc";
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+}
+
+function drawVector(x, y, angle, len) {
+    const rad = toRad(angle);
+    const dx = Math.sin(rad) * len;
+    const dy = -Math.cos(rad) * len;
+    
+    ctx.beginPath();
+    ctx.moveTo(x - dx, y - dy);
+    ctx.lineTo(x + dx, y + dy);
+    ctx.stroke();
+    
+    // 箭头小点
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.beginPath();
+    ctx.arc(x + dx, y + dy, 2, 0, Math.PI*2);
+    ctx.fill();
+}
+
+function drawPolarizer(x, y, angle, name) {
+    // 外框
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x - 40, y - 60, 80, 120);
+    ctx.fillStyle = "rgba(100, 100, 100, 0.1)";
+    ctx.fillRect(x - 40, y - 60, 80, 120);
+
+    // 偏振轴方向（栅格）
+    ctx.strokeStyle = "#888";
+    ctx.lineWidth = 1;
+    const rad = toRad(angle);
+    const dx = Math.sin(rad) * 40;
+    const dy = -Math.cos(rad) * 40;
+    
+    ctx.beginPath();
+    ctx.moveTo(x - dx, y - dy);
+    ctx.lineTo(x + dx, y + dy);
+    ctx.strokeStyle = "#ff0000";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = "#333";
+    ctx.textAlign = "center";
+    ctx.fillText(name, x, y - 75);
+}
+
+function drawLabel(x, y, text) {
+    ctx.fillStyle = "#666";
+    ctx.font = "14px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(text, x, y);
+}
+
+function updateUI(intensity) {
+    document.getElementById('angle1Val').innerText = angle1;
+    document.getElementById('angle2Val').innerText = angle2;
+    document.getElementById('deltaAngle').innerText = Math.abs(angle1 - angle2);
+    document.getElementById('intensityVal').innerText = (intensity * 100).toFixed(1);
+}
+
+slider1.oninput = (e) => angle1 = parseInt(e.target.value);
+slider2.oninput = (e) => angle2 = parseInt(e.target.value);
+
+draw();
+</script>
+</body>
+</html>

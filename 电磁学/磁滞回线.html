@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>磁滞回线交互演示 (Hysteresis Loop Simulation)</title>
+    <style>
+        :root {
+            --primary-color: #2196F3;
+            --accent-color: #FF4081;
+            --bg-color: #f5f7fa;
+            --panel-bg: #ffffff;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        header {
+            background-color: #2c3e50;
+            color: white;
+            width: 100%;
+            padding: 1rem 0;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        h1 { margin: 0; font-size: 1.5rem; }
+        p { margin: 0.5rem 0 0; opacity: 0.8; font-size: 0.9rem; }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            padding: 20px;
+            flex: 1;
+            min-width: 300px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Canvas Styles */
+        canvas {
+            border: 1px solid #eee;
+            border-radius: 4px;
+            background: #fff;
+            cursor: crosshair;
+        }
+
+        /* Controls */
+        .controls {
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        label { font-weight: bold; display: flex; justify-content: space-between; }
+        
+        input[type=range] {
+            width: 100%;
+            height: 8px;
+            background: #ddd;
+            border-radius: 5px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background .15s ease-in-out;
+        }
+
+        input[type=range]::-webkit-slider-thumb:hover {
+            background: #1976D2;
+        }
+
+        /* Material Buttons */
+        .material-selector {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            background: #e0e0e0;
+            color: #555;
+        }
+
+        .btn.active {
+            background: var(--primary-color);
+            color: white;
+            transform: scale(1.05);
+        }
+
+        /* Domain Visualization */
+        .domain-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 5px;
+            width: 200px;
+            height: 200px;
+            margin: 20px auto;
+            background: #eee;
+            padding: 10px;
+            border: 4px solid #333; /* Metal block border */
+        }
+
+        .arrow {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: var(--accent-color);
+            transition: transform 0.1s linear;
+        }
+
+        .readings {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .coil-viz {
+            width: 220px;
+            height: 60px;
+            border: 2px solid #555;
+            border-radius: 30px;
+            position: relative;
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(90deg, #ddd 5%, #fff 5%, #fff 95%, #ddd 95%);
+        }
+        
+        .coil-viz::after {
+            content: "励磁线圈";
+            font-size: 12px;
+            color: #666;
+        }
+
+        .info-text {
+            font-size: 0.85rem;
+            color: #666;
+            line-height: 1.4;
+            margin-top: 15px;
+            background: #fff3e0;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #ff9800;
+        }
+
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>磁滞回线演示 (Hysteresis Loop)</h1>
+    <p>控制外磁场 H，观察磁感应强度 B 的变化</p>
+</header>
+
+<div class="container">
+    <div class="panel">
+        <div class="material-selector">
+            <button class="btn active" onclick="setMaterial('soft')">软磁材料 (Soft)</button>
+            <button class="btn" onclick="setMaterial('hard')">硬磁材料 (Hard)</button>
+            <button class="btn" onclick="setMaterial('rect')">矩磁材料 (Square)</button>
+        </div>
+        
+        <canvas id="hysteresisCanvas" width="400" height="400"></canvas>
+        
+        <div class="readings">
+            <span>H (磁场): <b id="valH">0</b></span>
+            <span>B (磁感应): <b id="valB">0</b></span>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h3>实验控制台</h3>
+        
+        <div class="controls">
+            <div class="slider-group">
+                <label>
+                    外加磁场强度 (H)
+                    <span id="h-indicator">0</span>
+                </label>
+                <input type="range" id="hSlider" min="-100" max="100" value="0">
+            </div>
+            
+            <div style="text-align: center; margin: 10px 0;">
+                <div class="coil-viz" id="coilViz"></div>
+            </div>
+        </div>
+
+        <hr style="width:100%; border:0; border-top:1px solid #eee; margin: 20px 0;">
+
+        <h3>微观磁畴示意图</h3>
+        <p style="font-size: 0.8rem; color:#666; margin-bottom:10px;">观察箭头方向（代表磁矩）如何随磁场变化及滞后</p>
+        
+        <div class="domain-grid" id="domainGrid">
+            </div>
+
+        <div class="info-text" id="materialInfo">
+            <strong>软磁材料：</strong> 矫顽力(Hc)小，磁滞回线狭窄。容易磁化也容易退磁。常用于变压器、电机铁芯。
+        </div>
+    </div>
+</div>
+
+<script>
+    // Configuration
+    const canvas = document.getElementById('hysteresisCanvas');
+    const ctx = canvas.getContext('2d');
+    const slider = document.getElementById('hSlider');
+    const valHDisplay = document.getElementById('valH');
+    const valBDisplay = document.getElementById('valB');
+    const hIndicator = document.getElementById('h-indicator');
+    const domainGrid = document.getElementById('domainGrid');
+    const materialInfo = document.getElementById('materialInfo');
+
+    // Canvas coordinate system
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const scaleX = 1.5; // Scale for H
+    const scaleY = 1.5; // Scale for B
+
+    // State
+    let currentH = 0;
+    let currentB = 0;
+    let prevH = 0;
+    let direction = 1; // 1 for increasing H, -1 for decreasing H
+
+    // Material Properties (simulated parameters)
+    // Hc: Coercivity (width), k: Slope/steepness, Sat: Saturation level
+    const materials = {
+        soft: { 
+            Hc: 15, 
+            k: 0.08, 
+            Sat: 80,
+            desc: "<strong>软磁材料：</strong> 矫顽力(Hc)小，磁滞回线狭窄，包围面积小，磁滞损耗低。容易磁化也容易退磁。常用于制造电磁铁、变压器、电机铁芯。",
+            color: "#4CAF50"
+        },
+        hard: { 
+            Hc: 60, 
+            k: 0.04, 
+            Sat: 90,
+            desc: "<strong>硬磁材料 (永磁)：</strong> 矫顽力(Hc)大，剩磁(Br)大，磁滞回线肥大。一旦磁化难以退磁，能长期保持磁性。常用于制造永磁体、扬声器磁钢。",
+            color: "#F44336"
+        },
+        rect: { 
+            Hc: 40, 
+            k: 0.5, 
+            Sat: 85,
+            desc: "<strong>矩磁材料 (铁氧体)：</strong> 磁滞回线接近矩形。具有明显的“0”和“1”两个稳态，剩磁接近饱和磁感应强度。常用于计算机记忆元件、开关元件。",
+            color: "#9C27B0"
+        }
+    };
+
+    let activeMaterial = materials.soft;
+
+    // Initialize Domains
+    function initDomains() {
+        domainGrid.innerHTML = '';
+        for(let i=0; i<25; i++) {
+            const div = document.createElement('div');
+            div.className = 'arrow';
+            div.innerHTML = '➤'; // Unicode arrow
+            // Add some random initial noise to look like unmagnetized state roughly
+            const randomOffset = (Math.random() - 0.5) * 360;
+            div.style.transform = `rotate(${randomOffset}deg)`;
+            domainGrid.appendChild(div);
+        }
+    }
+
+    // Math Functions for Hysteresis Model
+    // Using a hyperbolic tangent based model to simulate the sigmoid shape
+    function calculateB(H, dir, mat) {
+        // H is input (-100 to 100)
+        // dir is direction (+1 or -1)
+        
+        // We simulate two curves: Upper (decreasing) and Lower (increasing)
+        // Lower Curve: Shifted right by Hc -> tanh(k * (H - Hc))
+        // Upper Curve: Shifted left by Hc  -> tanh(k * (H + Hc))
+        
+        const effectiveH_Lower = (H - mat.Hc) * mat.k;
+        const effectiveH_Upper = (H + mat.Hc) * mat.k;
+        
+        const B_lower = Math.tanh(effectiveH_Lower) * mat.Sat;
+        const B_upper = Math.tanh(effectiveH_Upper) * mat.Sat;
+
+        // Interactive logic:
+        // If direction is positive, we tend towards the lower curve (charging up)
+        // If direction is negative, we tend towards the upper curve (discharging down)
+        
+        if (dir > 0) return B_lower;
+        else return B_upper;
+    }
+
+    function drawGrid() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Grid lines
+        ctx.strokeStyle = '#eee';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for(let i=0; i<canvas.width; i+=40) { ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); }
+        for(let i=0; i<canvas.height; i+=40) { ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); }
+        ctx.stroke();
+
+        // Axes
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // X-axis (H)
+        ctx.moveTo(0, centerY); ctx.lineTo(canvas.width, centerY);
+        ctx.lineTo(canvas.width - 10, centerY - 5); ctx.moveTo(canvas.width, centerY); ctx.lineTo(canvas.width - 10, centerY + 5);
+        
+        // Y-axis (B)
+        ctx.moveTo(centerX, canvas.height); ctx.lineTo(centerX, 0);
+        ctx.lineTo(centerX - 5, 10); ctx.moveTo(centerX, 0); ctx.lineTo(centerX + 5, 10);
+        ctx.stroke();
+
+        // Labels
+        ctx.fillStyle = '#333';
+        ctx.font = '16px Arial';
+        ctx.fillText('H (磁场)', canvas.width - 60, centerY + 25);
+        ctx.fillText('B (磁感应)', centerX + 10, 20);
+        ctx.font = '12px Arial';
+        ctx.fillText('0', centerX + 5, centerY + 15);
+    }
+
+    // Draw the full theoretical loop for the current material (ghosted)
+    function drawFullLoop() {
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+        ctx.lineWidth = 3;
+
+        // Draw ascending curve (bottom)
+        for(let h = -100; h <= 100; h+=2) {
+            let b = calculateB(h, 1, activeMaterial);
+            let x = centerX + h * scaleX;
+            let y = centerY - b * scaleY;
+            if (h === -100) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        
+        // Draw descending curve (top)
+        for(let h = 100; h >= -100; h-=2) {
+            let b = calculateB(h, -1, activeMaterial);
+            let x = centerX + h * scaleX;
+            let y = centerY - b * scaleY;
+            ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Mark Coercivity and Retentivity visually
+        ctx.fillStyle = '#999';
+        ctx.font = '10px Arial';
+        
+        // Hc mark
+        ctx.fillText('+Hc', centerX + activeMaterial.Hc * scaleX, centerY + 12);
+        
+        // Br mark (approximate at H=0 on upper curve)
+        let Br = calculateB(0, -1, activeMaterial);
+        ctx.fillText('Br', centerX - 20, centerY - Br * scaleY);
+    }
+
+    function updateViz() {
+        drawGrid();
+        drawFullLoop();
+
+        // Draw Current Point
+        const x = centerX + currentH * scaleX;
+        const y = centerY - currentB * scaleY;
+
+        // Draw line from axis
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = '#999';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, centerY); ctx.lineTo(x, y); ctx.lineTo(centerX, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw Point
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, Math.PI * 2);
+        ctx.fillStyle = activeMaterial.color;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Update Text
+        valHDisplay.innerText = currentH;
+        valBDisplay.innerText = Math.round(currentB);
+        hIndicator.innerText = (currentH > 0 ? "+" : "") + currentH;
+
+        // Update Coil Visual
+        const coil = document.getElementById('coilViz');
+        if (currentH > 0) {
+            coil.style.boxShadow = `0 0 ${Math.abs(currentH)/2}px var(--primary-color)`;
+            coil.style.borderColor = 'var(--primary-color)';
+        } else if (currentH < 0) {
+            coil.style.boxShadow = `0 0 ${Math.abs(currentH)/2}px var(--accent-color)`;
+            coil.style.borderColor = 'var(--accent-color)';
+        } else {
+            coil.style.boxShadow = 'none';
+            coil.style.borderColor = '#555';
+        }
+
+        // Update Domains (Arrows)
+        updateDomains();
+    }
+
+    function updateDomains() {
+        const arrows = document.querySelectorAll('.arrow');
+        
+        // Calculate saturation percentage (-1 to 1)
+        const saturationRatio = currentB / activeMaterial.Sat;
+        
+        arrows.forEach((arrow, index) => {
+            // Base rotation: 0 deg is right (Positive H/B)
+            // 180 deg is left (Negative H/B)
+            
+            // We want the arrows to follow B, but with some noise (thermal agitation simulation)
+            // As B approaches Saturation, noise decreases.
+            
+            let targetAngle = 0;
+            if (saturationRatio >= 0) targetAngle = 0;
+            else targetAngle = 180;
+
+            // The alignment strength depends on abs(B). 
+            // If B is high, jitter is low. If B is low (but not 0), jitter is medium.
+            // If B is 0 (coercive point), random.
+            
+            const alignStrength = Math.abs(saturationRatio); // 0 to 1
+            const noise = (1 - alignStrength) * 180; // Max noise degrees
+            
+            const randomJitter = (Math.random() - 0.5) * noise;
+            
+            // However, we want them to transition smoothly.
+            // Simplified for visual: Rotate based on B value [-Sat, +Sat] maps to [180, 0] roughly?
+            // Actually, physics: Domains flip.
+            
+            // Let's use a mapping:
+            // B positive: vary around 0deg
+            // B negative: vary around 180deg
+            
+            // Smooth rotation calculation:
+            // Map B (-Max to +Max) -> Angle (180 to 0) works visually well
+            let angle = 0;
+            
+            // Linear interpolation for simple visual
+            // B = -Sat -> 180deg, B = +Sat -> 0deg
+            // But with randomness
+            
+            // Better visual:
+            // Just point in the general direction of B, with randomness inversely proportional to B magnitude
+            
+            const baseDir = currentB >= 0 ? 0 : 180;
+            const finalAngle = baseDir + (Math.random() - 0.5) * (180 * (1 - Math.abs(saturationRatio)));
+            
+            arrow.style.transform = `rotate(${finalAngle}deg)`;
+            
+            // Color feedback
+            if (currentB > 0) arrow.style.color = '#2196F3'; // Blue for N
+            else arrow.style.color = '#FF4081'; // Red for S
+        });
+    }
+
+    // Material Selection
+    window.setMaterial = function(type) {
+        // Update active button
+        document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+
+        activeMaterial = materials[type];
+        materialInfo.innerHTML = activeMaterial.desc;
+        materialInfo.style.borderLeftColor = activeMaterial.color;
+        
+        // Reset to 0 for smooth transition or keep state? 
+        // Let's keep H but recalculate B based on new material curve
+        // Force update B based on current H and direction
+        currentB = calculateB(currentH, direction, activeMaterial);
+        
+        updateViz();
+    }
+
+    // Slider Interaction
+    slider.addEventListener('input', (e) => {
+        const newH = parseInt(e.target.value);
+        
+        // Determine direction
+        if (newH > prevH) direction = 1;
+        else if (newH < prevH) direction = -1;
+        // if equal, keep previous direction (hysteresis depends on history)
+
+        currentH = newH;
+        currentB = calculateB(currentH, direction, activeMaterial);
+        
+        prevH = newH;
+        updateViz();
+    });
+
+    // Init
+    initDomains();
+    updateViz();
+
+</script>
+
+</body>
+</html>

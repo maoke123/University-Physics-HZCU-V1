@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>光电效应互动演示</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #222;
+            color: #eee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h2 { margin-bottom: 10px; }
+        .main-container {
+            background-color: #333;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: flex;
+            gap: 20px;
+        }
+        #canvas-container {
+            position: relative;
+            border: 3px solid #555;
+            border-radius: 8px;
+            background: #1a1a1a;
+            overflow: hidden;
+        }
+        canvas { display: block; background: #111; }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            min-width: 280px;
+            padding: 10px;
+        }
+        .control-group {
+            background: #444;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+        }
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+        .value-display {
+            font-family: monospace;
+            color: #00d2ff;
+        }
+        #ammeter-readout {
+            position: absolute;
+            bottom: 20px;
+            right: 140px;
+            background: #000;
+            border: 2px solid #666;
+            color: #0f0;
+            font-family: monospace;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 1.2em;
+        }
+        .info-text {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #bbb;
+            max-width: 800px;
+            text-align: center;
+        }
+        /* Color spectrum gradient for wavelength slider */
+        #wavelength {
+            background: linear-gradient(to right, #8b00ff, #0000ff, #00ff00, #ffff00, #ff7f00, #ff0000);
+            -webkit-appearance: none;
+            height: 10px;
+            border-radius: 5px;
+        }
+        #wavelength::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px; height: 18px; border-radius: 50%; background: #fff; cursor: pointer; border: 2px solid #333;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>光电效应互动演示</h2>
+
+    <div class="main-container">
+        <div id="canvas-container">
+            <canvas id="simCanvas" width="700" height="450"></canvas>
+            <div id="ammeter-readout">电流: <span id="currentValue">0.0</span> A</div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="wavelength">入射光波长 (λ): <span id="wlLabel" class="value-display">450 nm</span></label>
+                <input type="range" id="wavelength" min="350" max="750" value="450" step="1">
+            </div>
+
+            <div class="control-group">
+                <label for="voltage">极板电压 (V): <span id="voltLabel" class="value-display">0.0 V</span></label>
+                <input type="range" id="voltage" min="-5.0" max="5.0" value="0.0" step="0.1">
+                <div style="display: flex; justify-content: space-between; font-size: 0.8em; margin-top: 5px; color:#bbb;">
+                    <span>⬅️ 遏止 (负)</span><span>加速 (正) ➡️</span>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label for="intensity">光照强度 (光子数): <span id="intLabel" class="value-display">50%</span></label>
+                <input type="range" id="intensity" min="0" max="100" value="50" step="1">
+            </div>
+        </div>
+    </div>
+
+    <p class="info-text">
+        操作说明: 调节波长改变光子能量 (E=hc/λ)。如果能量大于金属逸出功，电子将被射出。调节电压会加速电子或使电子减速(遏止)。观察电流表读数的变化。
+    </p>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const wlSlider = document.getElementById('wavelength');
+    const voltSlider = document.getElementById('voltage');
+    const intSlider = document.getElementById('intensity');
+    const wlLabel = document.getElementById('wlLabel');
+    const voltLabel = document.getElementById('voltLabel');
+    const intLabel = document.getElementById('intLabel');
+    const currentReadout = document.getElementById('currentValue');
+
+    // --- 物理模拟常量 (非真实值，用于视觉模拟调整) ---
+    // 逸出功: 设定在绿光附近 (约 520nm)
+    const WORK_FUNCTION_ENERGY_THRESHOLD = 1 / 520; 
+    const HC_SIM = 1; // 模拟的 hc 常数
+    const ELECTRON_CHARGE_SIM = 0.08; // 模拟电子电荷量，影响电压对电子的作用力
+    const BASE_ELECTRON_SPEED = 80; // 基础速度系数
+
+    // --- 状态变量 ---
+    let wavelength = parseInt(wlSlider.value);
+    let voltage = parseFloat(voltSlider.value);
+    let intensity = parseInt(intSlider.value);
+    let photons = [];
+    let electrons = [];
+    let electronsCollected = 0;
+    let lastTime = performance.now();
+    let currentSmoothing = 0; // 用于平滑电流读数
+
+    // --- 场景元素定义 ---
+    const plateWidth = 20;
+    const plateHeight = 250;
+    const cathodeX = 100;
+    const anodeX = 600;
+    const plateY = (canvas.height - plateHeight) / 2;
+
+    // --- 工具函数：波长转RGB颜色 ---
+    // 简化的算法将nm转换为近似的RGB用于显示
+    function wavelengthToColor(wavelength) {
+        let r, g, b, alpha;
+        if (wavelength >= 350 && wavelength < 440) {
+            r = -(wavelength - 440) / (440 - 350); g = 0.0; b = 1.0;
+        } else if (wavelength >= 440 && wavelength < 490) {
+            r = 0.0; g = (wavelength - 440) / (490 - 440); b = 1.0;
+        } else if (wavelength >= 490 && wavelength < 510) {
+            r = 0.0; g = 1.0; b = -(wavelength - 510) / (510 - 490);
+        } else if (wavelength >= 510 && wavelength < 580) {
+            r = (wavelength - 510) / (580 - 510); g = 1.0; b = 0.0;
+        } else if (wavelength >= 580 && wavelength < 645) {
+            r = 1.0; g = -(wavelength - 645) / (645 - 580); b = 0.0;
+        } else if (wavelength >= 645 && wavelength <= 780) {
+            r = 1.0; g = 0.0; b = 0.0;
+        } else {
+            r = 0.0; g = 0.0; b = 0.0; // 不可见
+        }
+        // 强度修正 (让两端变暗)
+        let factor;
+        if (wavelength >= 350 && wavelength < 420) {
+            factor = 0.3 + 0.7 * (wavelength - 350) / (420 - 350);
+        } else if (wavelength >= 420 && wavelength < 700) {
+            factor = 1.0;
+        } else if (wavelength >= 700 && wavelength <= 780) {
+            factor = 0.3 + 0.7 * (780 - wavelength) / (780 - 700);
+        } else {
+            factor = 0;
+        }
+        const rgb = [Math.round(r * factor * 255), Math.round(g * factor * 255), Math.round(b * factor * 255)];
+        return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    }
+
+    // --- 类定义 ---
+    class Photon {
+        constructor() {
+            this.x = 0;
+            // 让光子射向阴极板区域
+            this.y = plateY + Math.random() * plateHeight;
+            this.speedX = 6 + Math.random() * 2;
+            this.speedY = (Math.random() - 0.5) * 2;
+            this.color = wavelengthToColor(wavelength);
+            this.wavelength = wavelength;
+            this.radius = 4;
+        }
+        update() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+        }
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this.color;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = this.color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.closePath();
+        }
+    }
+
+    class Electron {
+        constructor(yPos, kineticEnergyFactor) {
+            this.x = cathodeX + plateWidth + 2;
+            this.y = yPos;
+            this.radius = 3;
+            // 初始速度与动能的平方根成正比 (v = sqrt(2K/m))
+            // 加上一些随机的垂直速度分量
+            const initialSpeed = BASE_ELECTRON_SPEED * Math.sqrt(kineticEnergyFactor);
+            this.vx = initialSpeed * (0.8 + Math.random()*0.4); 
+            this.vy = (Math.random() - 0.5) * initialSpeed * 0.5; 
+        }
+        update(dt) {
+            // 计算电场力导致的加速度 (F = qE, E ~ Voltage)
+            // 电压为正时，ax 为正（向右加速）
+            const ax = voltage * ELECTRON_CHARGE_SIM * 30; 
+
+            this.vx += ax * dt;
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+        }
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#00d2ff'; // 青色电子
+            ctx.fill();
+            ctx.closePath();
+        }
+    }
+
+    // --- 主循环 ---
+    function animate(timestamp) {
+        const dt = (timestamp - lastTime) / 1000 || 0; //以秒为单位的 delta time
+        lastTime = timestamp;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        drawScene();
+
+        // --- 生成光子 ---
+        // 基于强度决定发射概率
+        if (Math.random() < intensity / 200) {
+            photons.push(new Photon());
+        }
+
+        // --- 更新和绘制光子 ---
+        for (let i = photons.length - 1; i >= 0; i--) {
+            photons[i].update();
+            photons[i].draw();
+
+            // 碰撞检测：光子击中阴极
+            if (photons[i].x >= cathodeX && photons[i].x <= cathodeX + plateWidth &&
+                photons[i].y >= plateY && photons[i].y <= plateY + plateHeight) {
+                
+                // 物理核心：计算光子能量 E = hc / lambda
+                // 我们使用模拟值：Energy = 1 / wavelength
+                const photonEnergy = 1 / photons[i].wavelength;
+
+                // 判断是否大于逸出功
+                if (photonEnergy > WORK_FUNCTION_ENERGY_THRESHOLD) {
+                    // 计算最大初动能 Kmax = E - W
+                    const kineticEnergyFactor = photonEnergy - WORK_FUNCTION_ENERGY_THRESHOLD;
+                    // 发射电子
+                    electrons.push(new Electron(photons[i].y, kineticEnergyFactor));
+                }
+
+                // 光子被吸收
+                photons.splice(i, 1);
+            } 
+            // 移除超出屏幕的光子
+            else if (photons[i].x > canvas.width || photons[i].y < 0 || photons[i].y > canvas.height) {
+                photons.splice(i, 1);
+            }
+        }
+
+        // --- 更新和绘制电子 ---
+        let collectedThisFrame = 0;
+        for (let i = electrons.length - 1; i >= 0; i--) {
+            electrons[i].update(dt);
+            electrons[i].draw();
+
+            // 检测到达阳极
+            if (electrons[i].x >= anodeX && 
+                electrons[i].y >= plateY && electrons[i].y <= plateY + plateHeight) {
+                collectedThisFrame++;
+                electrons.splice(i, 1);
+            } 
+            // 检测掉头撞回阴极或飞出边界
+            else if (electrons[i].x < cathodeX + plateWidth || electrons[i].y < 0 || electrons[i].y > canvas.height) {
+                electrons.splice(i, 1);
+            }
+        }
+
+        // --- 更新电流读数 (平滑处理) ---
+        // 简单的模拟：电流与每帧收集的电子数成正比
+        currentSmoothing = currentSmoothing * 0.95 + collectedThisFrame * 0.05;
+        // 乘以一个系数让读数看起来像真实的微安/纳安级别，并确保负电压遏止时为0
+        let displayCurrent = (currentSmoothing * 2.5).toFixed(1);
+        if (parseFloat(displayCurrent) < 0.1) displayCurrent = "0.0";
+        currentReadout.textContent = displayCurrent;
+
+        requestAnimationFrame(animate);
+    }
+
+    // --- 绘制背景场景 (极板、电路) ---
+    function drawScene() {
+        // 绘制连接线 (电路)
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        // 阴极引出
+        ctx.moveTo(cathodeX + plateWidth/2, plateY + plateHeight);
+        ctx.lineTo(cathodeX + plateWidth/2, canvas.height - 50);
+        ctx.lineTo(canvas.width / 2 - 60, canvas.height - 50); // 到电源左侧
+        
+        // 阳极引出
+        ctx.moveTo(anodeX + plateWidth/2, plateY + plateHeight);
+        ctx.lineTo(anodeX + plateWidth/2, canvas.height - 50);
+        ctx.lineTo(canvas.width / 2 + 60, canvas.height - 50); // 到电源右侧
+
+        // 绘制简易电源符号和电压指示
+        ctx.moveTo(canvas.width/2 - 30, canvas.height - 70); // 长线
+        ctx.lineTo(canvas.width/2 - 30, canvas.height - 30);
+        ctx.moveTo(canvas.width/2 + 30, canvas.height - 60); // 短线
+        ctx.lineTo(canvas.width/2 + 30, canvas.height - 40);
+
+        ctx.stroke();
+
+        // 绘制电源极性指示
+        ctx.fillStyle = '#bbb';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        if (voltage > 0) {
+            ctx.fillText('+', canvas.width/2 + 50, canvas.height - 65);
+            ctx.fillText('-', canvas.width/2 - 50, canvas.height - 65);
+        } else if (voltage < 0) {
+             ctx.fillText('-', canvas.width/2 + 50, canvas.height - 65);
+             ctx.fillText('+', canvas.width/2 - 50, canvas.height - 65);
+        }
+
+        // 绘制阴极板 (光敏金属 - 左侧)
+        // 根据能否打出电子稍微改变颜色提示
+        const energy = 1/wavelength;
+        const canEject = energy > WORK_FUNCTION_ENERGY_THRESHOLD;
+        ctx.fillStyle = canEject ? '#a8c0ff' : '#777'; // 激活态稍微亮一点
+        ctx.fillRect(cathodeX, plateY, plateWidth, plateHeight);
+        ctx.strokeStyle = '#ccc';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cathodeX, plateY, plateWidth, plateHeight);
+        ctx.fillStyle = '#eee';
+        ctx.font = '14px Arial';
+        ctx.fillText("阴极 (金属)", cathodeX + 10, plateY - 10);
+
+
+        // 绘制阳极板 (接收极 - 右侧)
+        // 根据电压改变颜色提示极性
+        if (voltage > 0.1) ctx.fillStyle = '#ffcccc'; // 正极偏红
+        else if (voltage < -0.1) ctx.fillStyle = '#ccccff'; // 负极偏蓝
+        else ctx.fillStyle = '#999';
+
+        ctx.fillRect(anodeX, plateY, plateWidth, plateHeight);
+        ctx.strokeRect(anodeX, plateY, plateWidth, plateHeight);
+        ctx.fillStyle = '#eee';
+        ctx.fillText("阳极 (接收)", anodeX + 10, plateY - 10);
+    }
+
+    // --- 事件监听 ---
+    wlSlider.addEventListener('input', (e) => {
+        wavelength = parseInt(e.target.value);
+        wlLabel.textContent = wavelength + ' nm';
+        // 更新现存光子的颜色 (可选，让看起来更连贯)
+        const newColor = wavelengthToColor(wavelength);
+        photons.forEach(p => { p.color = newColor; p.wavelength = wavelength; });
+    });
+
+    voltSlider.addEventListener('input', (e) => {
+        voltage = parseFloat(e.target.value);
+        voltLabel.textContent = voltage.toFixed(1) + ' V';
+    });
+    
+    intSlider.addEventListener('input', (e) => {
+        intensity = parseInt(e.target.value);
+        intLabel.textContent = intensity + '%';
+    });
+
+    // --- 启动 ---
+    animate();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>库仑定律与电场线动态实验室 v3.1 (MathJax版)</title>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: rgba(15, 23, 42, 0.95);
+            --accent: #38bdf8;
+            --text: #f1f5f9;
+            --force-color: #fbbf24;
+        }
+        body { margin: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+        
+        #canvas-container { flex: 1; position: relative; cursor: default; }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        #ui-panel {
+            width: 340px; background: var(--panel); 
+            border-left: 1px solid #334155; padding: 25px; display: flex; flex-direction: column; gap: 18px;
+            box-shadow: -5px 0 30px rgba(0,0,0,0.5); overflow-y: auto; z-index: 10;
+        }
+
+        h2 { margin: 0; font-size: 1.4rem; font-weight: 600; color: #fff; letter-spacing: 0.5px; }
+        
+        .formula-box { 
+            background: #1e293b; padding: 10px; border-radius: 8px; 
+            font-size: 1.2rem; 
+            text-align: center; border: 1px solid #475569; color: var(--accent);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+            min-height: 60px; display: flex; align-items: center; justify-content: center;
+        }
+
+        /* 强制 MathJax 使用我们的强调色 */
+        mjx-container { color: var(--accent) !important; font-size: 110% !important; }
+
+        .card { background: #1e293b; padding: 15px; border-radius: 10px; border: 1px solid #334155; }
+        .card-header { 
+            display: flex; justify-content: space-between; align-items: center; 
+            margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 8px;
+        }
+        .card-title { font-size: 0.85rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-family: 'Courier New', monospace; font-size: 0.95rem; }
+        .stat-val { color: var(--accent); font-weight: bold; }
+        .force-val { color: var(--force-color); font-weight: bold; }
+
+        .control-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .control-label { font-size: 0.9rem; color: #cbd5e1; min-width: 40px; }
+        
+        input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+        
+        .btn-group { display: flex; gap: 10px; }
+        button { 
+            flex: 1; padding: 8px; border: none; border-radius: 6px; 
+            font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 0.85rem;
+        }
+        .btn-pos { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid #ef4444; }
+        .btn-pos.active { background: #ef4444; color: white; }
+        .btn-neg { background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid #3b82f6; }
+        .btn-neg.active { background: #3b82f6; color: white; }
+
+        .legend { font-size: 0.8rem; margin-top: auto; color: #64748b; line-height: 1.6; }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    </style>
+</head>
+<body>
+
+<div id="canvas-container">
+    <canvas id="labCanvas"></canvas>
+</div>
+
+<div id="ui-panel">
+    <h2>电场交互实验室</h2>
+    
+    <div class="formula-box">
+        $$ F = k \frac{|q_1 q_2|}{r^2} $$
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">物理参数 (实时)</span>
+        </div>
+        <div class="stat-row">
+            <span>电荷间距 (r):</span>
+            <span class="stat-val" id="r-display">0.00 m</span>
+        </div>
+        <div class="stat-row">
+            <span>库仑力 (F):</span>
+            <span class="force-val" id="f-display">0.00 N</span>
+        </div>
+    </div>
+
+    <div class="card" style="border-left: 4px solid #ef4444;">
+        <div class="card-header">
+            <span class="card-title" style="color:#ef4444">左侧电荷 Q1</span>
+            <span class="stat-val" id="q1-val-display" style="color:#fff">1.0 e</span>
+        </div>
+        <div class="control-row">
+            <span class="control-label">电量</span>
+            <input type="range" min="1" max="10" step="1" value="1" oninput="updateCharge(0, this.value)">
+        </div>
+        <div class="btn-group">
+            <button class="btn-pos active" id="btn-q1-pos" onclick="setSign(0, 1)">正 (+)</button>
+            <button class="btn-neg" id="btn-q1-neg" onclick="setSign(0, -1)">负 (-)</button>
+        </div>
+    </div>
+
+    <div class="card" style="border-left: 4px solid #3b82f6;">
+        <div class="card-header">
+            <span class="card-title" style="color:#3b82f6">右侧电荷 Q2</span>
+            <span class="stat-val" id="q2-val-display" style="color:#fff">-1.0 e</span>
+        </div>
+        <div class="control-row">
+            <span class="control-label">电量</span>
+            <input type="range" min="1" max="10" step="1" value="1" oninput="updateCharge(1, this.value)">
+        </div>
+        <div class="btn-group">
+            <button class="btn-pos" id="btn-q2-pos" onclick="setSign(1, 1)">正 (+)</button>
+            <button class="btn-neg active" id="btn-q2-neg" onclick="setSign(1, -1)">负 (-)</button>
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="dot" style="background:#fbbf24"></span> 库仑力方向 (F)</div>
+        <div class="legend-item"><span class="dot" style="background:#94a3b8"></span> 电场线 (正 &rarr; 负)</div>
+        <div style="margin-top:8px; font-style:italic;">* 拖动圆球改变位置 *</div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('labCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 物理常量模拟
+    const K_COULOMB = 800000; // 视觉缩放系数
+    const PIXEL_TO_METER = 0.01; // 100px = 1m
+    
+    // 电荷对象
+    let charges = [
+        { x: 0, y: 0, q: 1, sign: 1, color: '#ef4444', dragging: false },
+        { x: 0, y: 0, q: 1, sign: -1, color: '#3b82f6', dragging: false }
+    ];
+
+    let mouse = { x: 0, y: 0 };
+
+    function init() {
+        resize();
+        charges[0].x = canvas.width * 0.3;
+        charges[0].y = canvas.height * 0.5;
+        charges[1].x = canvas.width * 0.7;
+        charges[1].y = canvas.height * 0.5;
+
+        window.addEventListener('resize', resize);
+        canvas.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        
+        animate();
+    }
+
+    function resize() {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+    }
+
+    function updateCharge(index, val) {
+        charges[index].q = parseFloat(val);
+        updateUI();
+    }
+
+    function setSign(index, sign) {
+        charges[index].sign = sign;
+        const prefix = index === 0 ? 'q1' : 'q2';
+        document.getElementById(`btn-${prefix}-pos`).className = sign === 1 ? 'btn-pos active' : 'btn-pos';
+        document.getElementById(`btn-${prefix}-neg`).className = sign === -1 ? 'btn-neg active' : 'btn-neg';
+        charges[index].color = sign === 1 ? '#ef4444' : '#3b82f6';
+        updateUI();
+    }
+
+    function updateUI() {
+        const c1 = charges[0];
+        const c2 = charges[1];
+        const dx = c2.x - c1.x;
+        const dy = c2.y - c1.y;
+        const distPx = Math.sqrt(dx*dx + dy*dy);
+        const distM = distPx * PIXEL_TO_METER;
+        const forceVal = (9.0 * c1.q * c2.q) / (distM * distM); 
+        
+        document.getElementById('r-display').innerText = distM.toFixed(2) + " m";
+        document.getElementById('f-display').innerText = Math.abs(forceVal).toFixed(2) + " N";
+        document.getElementById('q1-val-display').innerText = (c1.sign * c1.q).toFixed(0) + " e";
+        document.getElementById('q2-val-display').innerText = (c2.sign * c2.q).toFixed(0) + " e";
+    }
+
+    // 核心物理引擎：计算某一点的电场矢量 E
+    function getElectricField(x, y) {
+        let Ex = 0, Ey = 0;
+        charges.forEach(c => {
+            const dx = x - c.x;
+            const dy = y - c.y;
+            const distSq = dx*dx + dy*dy;
+            const dist = Math.sqrt(distSq);
+            if (dist < 10) return; 
+            const E_mag = (c.q * c.sign) / distSq; 
+            Ex += E_mag * (dx / dist);
+            Ey += E_mag * (dy / dist);
+        });
+        return { x: Ex, y: Ey };
+    }
+
+    function drawArrowHead(ctx, x, y, angle, color, size = 5) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.moveTo(-size, -size * 0.6);
+        ctx.lineTo(size, 0);
+        ctx.lineTo(-size, size * 0.6);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function drawForceVector(originX, originY, fx, fy) {
+        const magnitude = Math.sqrt(fx*fx + fy*fy);
+        if (magnitude < 0.1) return;
+        const angle = Math.atan2(fy, fx);
+        const length = Math.min(magnitude * 0.8, 150); 
+        ctx.beginPath();
+        ctx.moveTo(originX, originY);
+        ctx.lineTo(originX + fx/magnitude * length, originY + fy/magnitude * length);
+        ctx.strokeStyle = '#fbbf24'; 
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        drawArrowHead(ctx, originX + fx/magnitude * length, originY + fy/magnitude * length, angle, '#fbbf24', 10);
+    }
+
+    // 连续场线绘制
+    function drawFieldLines() {
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; 
+        
+        const stepSize = 6; 
+        const maxSteps = 600;
+
+        charges.forEach(sourceCharge => {
+            const numLines = Math.floor(sourceCharge.q * 10); 
+            
+            for (let i = 0; i < numLines; i++) {
+                const angle = (Math.PI * 2 * i) / numLines;
+                
+                let currX = sourceCharge.x + Math.cos(angle) * 15;
+                let currY = sourceCharge.y + Math.sin(angle) * 15;
+                
+                let pathPoints = [{x: currX, y: currY}];
+                const direction = sourceCharge.sign > 0 ? 1 : -1;
+
+                for (let step = 0; step < maxSteps; step++) {
+                    const E = getElectricField(currX, currY);
+                    const Emag = Math.sqrt(E.x*E.x + E.y*E.y);
+                    
+                    if (Emag === 0) break;
+
+                    const dx = (E.x / Emag) * stepSize * direction;
+                    const dy = (E.y / Emag) * stepSize * direction;
+
+                    currX += dx;
+                    currY += dy;
+                    
+                    pathPoints.push({x: currX, y: currY});
+
+                    let hit = false;
+                    for(let c of charges) {
+                        if (Math.hypot(c.x - currX, c.y - currY) < 15) {
+                             if (step > 5) hit = true;
+                        }
+                    }
+                    if (hit || currX < -50 || currX > canvas.width + 50 || currY < -50 || currY > canvas.height + 50) {
+                        break;
+                    }
+                }
+
+                if (pathPoints.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+                    for (let j = 1; j < pathPoints.length; j++) {
+                        ctx.lineTo(pathPoints[j].x, pathPoints[j].y);
+                    }
+                    ctx.stroke();
+
+                    const arrowSpacing = 20; 
+                    for (let k = arrowSpacing; k < pathPoints.length - 5; k += arrowSpacing) {
+                        const p = pathPoints[k];
+                        const realE = getElectricField(p.x, p.y);
+                        const realAngle = Math.atan2(realE.y, realE.x);
+                        drawArrowHead(ctx, p.x, p.y, realAngle, 'rgba(255,255,255,0.7)', 3.5);
+                    }
+                }
+            }
+        });
+    }
+
+    function animate() {
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        drawFieldLines();
+
+        const dx = charges[1].x - charges[0].x;
+        const dy = charges[1].y - charges[0].y;
+        const distSq = dx*dx + dy*dy;
+        const dist = Math.sqrt(distSq);
+        const F_mag = K_COULOMB * (charges[0].q * charges[1].q) / distSq;
+        const isRepel = (charges[0].sign * charges[1].sign) > 0;
+        const uRx = dx / dist;
+        const uRy = dy / dist;
+
+        charges.forEach((c, index) => {
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, 18, 0, Math.PI * 2);
+            let grad = ctx.createRadialGradient(c.x-5, c.y-5, 2, c.x, c.y, 18);
+            grad.addColorStop(0, '#fff');
+            grad.addColorStop(0.3, c.color);
+            grad.addColorStop(1, c.color);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, 25, 0, Math.PI * 2);
+            ctx.fillStyle = c.sign > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)';
+            ctx.fill();
+
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(c.sign > 0 ? '+' : '-', c.x, c.y);
+
+            let forceX, forceY;
+            if (index === 0) { 
+                if (isRepel) { forceX = -uRx * Math.abs(F_mag); forceY = -uRy * Math.abs(F_mag); } 
+                else { forceX = uRx * Math.abs(F_mag); forceY = uRy * Math.abs(F_mag); }
+            } else { 
+                if (isRepel) { forceX = uRx * Math.abs(F_mag); forceY = uRy * Math.abs(F_mag); } 
+                else { forceX = -uRx * Math.abs(F_mag); forceY = -uRy * Math.abs(F_mag); }
+            }
+            if (dist > 40) drawForceVector(c.x, c.y, forceX, forceY);
+        });
+
+        if (dist > 60) {
+            ctx.save();
+            ctx.translate((charges[0].x + charges[1].x)/2, (charges[0].y + charges[1].y)/2);
+            ctx.rotate(Math.atan2(dy, dx));
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '12px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(`r = ${(dist * PIXEL_TO_METER).toFixed(2)}m`, 0, -10);
+            ctx.strokeStyle = '#334155';
+            ctx.beginPath();
+            ctx.setLineDash([5, 5]);
+            ctx.moveTo(-dist/2 + 25, 0);
+            ctx.lineTo(dist/2 - 25, 0);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        updateUI();
+        requestAnimationFrame(animate);
+    }
+
+    function onMouseDown(e) {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = e.clientX - rect.left;
+        mouse.y = e.clientY - rect.top;
+        charges.forEach(c => {
+            if (Math.hypot(c.x - mouse.x, c.y - mouse.y) < 25) {
+                c.dragging = true;
+                canvas.style.cursor = 'grabbing';
+            }
+        });
+    }
+    function onMouseMove(e) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        charges.forEach(c => {
+            if (c.dragging) { c.x = mx; c.y = my; }
+        });
+        if (!charges.some(c => c.dragging)) {
+            const hover = charges.some(c => Math.hypot(c.x - mx, c.y - my) < 25);
+            canvas.style.cursor = hover ? 'grab' : 'default';
+        }
+    }
+    function onMouseUp() {
+        charges.forEach(c => c.dragging = false);
+        canvas.style.cursor = 'default';
+    }
+
+    init();
+</script>
+</body>
+</html>

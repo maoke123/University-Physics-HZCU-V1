@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高斯定理交互：可变电荷与通量计算</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f4f6f8;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        canvas {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #ffffff;
+            cursor: move; /* 提示可拖动 */
+            touch-action: none; /* 防止触摸滚动 */
+        }
+
+        .controls {
+            margin-top: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        input[type=range] {
+            width: 200px;
+            cursor: pointer;
+        }
+
+        .math-display {
+            margin-top: 20px;
+            font-size: 1.3em;
+            min-height: 80px; /* 防止公式渲染时高度跳动 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #e8f5e9;
+            border: 1px solid #c8e6c9;
+            padding: 10px 30px;
+            border-radius: 8px;
+            transition: background-color 0.3s;
+        }
+
+        .math-display.outside {
+            background: #e3f2fd;
+            border-color: #bbdefb;
+            color: #0d47a1;
+        }
+
+        .math-display.inside {
+            background: #ffebee;
+            border-color: #ffcdd2;
+            color: #b71c1c;
+        }
+
+        .legend {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #666;
+            display: flex;
+            gap: 15px;
+        }
+        
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="margin-top: 0;">高斯面通量实时演示</h2>
+    
+    <canvas id="simCanvas" width="700" height="400"></canvas>
+    
+    <div class="controls">
+        <div class="slider-group">
+            <label for="chargeSlider"><strong>电荷量 ($q$):</strong></label>
+            <input type="range" id="chargeSlider" min="-5" max="5" value="1" step="1">
+            <span id="chargeValueDisplay" style="font-family: monospace; font-size: 1.1em; width: 40px;">+1</span>
+        </div>
+        <div class="legend">
+            <div class="legend-item"><span class="dot" style="background:#ffca28"></span>正电荷</div>
+            <div class="legend-item"><span class="dot" style="background:#42a5f5"></span>负电荷</div>
+        </div>
+    </div>
+
+    <div id="fluxOutput" class="math-display outside">
+        $$ \Phi_E = 0 $$
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const slider = document.getElementById('chargeSlider');
+    const valDisplay = document.getElementById('chargeValueDisplay');
+    const fluxOutput = document.getElementById('fluxOutput');
+
+    // 状态变量
+    let charge = { x: 100, y: 200, r: 15, q: 1 }; // q 是倍数
+    let isDragging = false;
+    let isInside = false;
+
+    // 高斯面路径定义 (土豆形状)
+    const surfacePath = new Path2D();
+    const cx = 400, cy = 200;
+    surfacePath.moveTo(cx - 100, cy - 120);
+    surfacePath.bezierCurveTo(cx + 80, cy - 150, cx + 180, cy - 80, cx + 150, cy);
+    surfacePath.bezierCurveTo(cx + 180, cy + 100, cx + 50, cy + 150, cx - 60, cy + 120);
+    surfacePath.bezierCurveTo(cx - 180, cy + 100, cx - 150, cy - 60, cx - 100, cy - 120);
+    surfacePath.closePath();
+
+    // === 事件监听 ===
+    
+    // 鼠标/触摸 拖拽逻辑
+    canvas.addEventListener('mousedown', startDrag);
+    canvas.addEventListener('mousemove', drag);
+    canvas.addEventListener('mouseup', endDrag);
+    canvas.addEventListener('mouseleave', endDrag);
+    
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDrag(e.touches[0]); });
+    canvas.addEventListener('touchmove', (e) => { e.preventDefault(); drag(e.touches[0]); });
+    canvas.addEventListener('touchend', endDrag);
+
+    // 滑块逻辑
+    slider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        charge.q = val;
+        valDisplay.innerText = val > 0 ? "+" + val : val;
+        updateUI(); // 更新数学公式
+        draw();     // 重绘画面
+    });
+
+    function getPos(evt) {
+        const rect = canvas.getBoundingClientRect();
+        return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+    }
+
+    function startDrag(evt) {
+        const pos = getPos(evt);
+        if (Math.hypot(pos.x - charge.x, pos.y - charge.y) < charge.r * 2) {
+            isDragging = true;
+        }
+    }
+
+    function drag(evt) {
+        if (!isDragging) return;
+        const pos = getPos(evt);
+        charge.x = pos.x;
+        charge.y = pos.y;
+        
+        // 检查状态变化
+        const currentlyInside = ctx.isPointInPath(surfacePath, charge.x, charge.y);
+        
+        if (currentlyInside !== isInside) {
+            isInside = currentlyInside;
+            updateUI(); // 只有状态改变时才更新 DOM 和 MathJax，节省性能
+        }
+        draw();
+    }
+
+    function endDrag() { isDragging = false; }
+
+    // === 核心绘制函数 ===
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 1. 绘制电场线 (底层)
+        drawFieldLines();
+
+        // 2. 绘制高斯面 (中层)
+        drawSurface();
+
+        // 3. 绘制电荷 (顶层)
+        drawCharge();
+    }
+
+    function drawSurface() {
+        ctx.save();
+        ctx.lineWidth = 3;
+        if (isInside) {
+            // 内部：红色边框，浅红填充
+            ctx.strokeStyle = "#ef5350";
+            ctx.fillStyle = "rgba(255, 235, 238, 0.5)";
+        } else {
+            // 外部：蓝色边框，浅蓝填充
+            ctx.strokeStyle = "#42a5f5";
+            ctx.fillStyle = "rgba(227, 242, 253, 0.5)";
+        }
+        ctx.fill(surfacePath);
+        ctx.stroke(surfacePath);
+        
+        // 标注 S
+        ctx.fillStyle = isInside ? "#c62828" : "#1565c0";
+        ctx.font = "bold 16px Arial";
+        ctx.fillText("S", cx - 120, cy - 80);
+        ctx.restore();
+    }
+
+    function drawCharge() {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(charge.x, charge.y, charge.r, 0, Math.PI * 2);
+        
+        // 根据电荷正负改变颜色
+        if (charge.q > 0) {
+            ctx.fillStyle = "#ffca28"; // 黄
+            ctx.strokeStyle = "#f57f17";
+        } else if (charge.q < 0) {
+            ctx.fillStyle = "#42a5f5"; // 蓝
+            ctx.strokeStyle = "#1565c0";
+        } else {
+            ctx.fillStyle = "#bdbdbd"; // 灰 (0电荷)
+            ctx.strokeStyle = "#757575";
+        }
+        
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+
+        // 文字
+        ctx.fillStyle = (Math.abs(charge.q) > 0) ? "#fff" : "#444";
+        ctx.font = "bold 16px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        let symbol = charge.q > 0 ? "+" : (charge.q < 0 ? "-" : "0");
+        ctx.fillText(symbol, charge.x, charge.y);
+        ctx.restore();
+    }
+
+    function drawFieldLines() {
+        if (charge.q === 0) return; // 0电荷无场线
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(100, 100, 100, 0.3)";
+        ctx.lineWidth = 1;
+        
+        // 场线数量与电荷量成正比
+        const baseLines = 8; 
+        const numLines = baseLines * Math.abs(charge.q); 
+        const lineLength = 1000;
+
+        for (let i = 0; i < numLines; i++) {
+            const angle = (i / numLines) * Math.PI * 2;
+            const endX = charge.x + Math.cos(angle) * lineLength;
+            const endY = charge.y + Math.sin(angle) * lineLength;
+
+            ctx.beginPath();
+            ctx.moveTo(charge.x, charge.y);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
+            // 箭头方向
+            // 如果 q > 0，箭头向外 (angle)
+            // 如果 q < 0，箭头向内 (angle + PI)
+            const arrowAngle = charge.q > 0 ? angle : angle + Math.PI;
+            
+            // 在场线上画几个箭头
+            drawArrow(charge.x, charge.y, angle, 60, arrowAngle);
+            drawArrow(charge.x, charge.y, angle, 160, arrowAngle);
+            drawArrow(charge.x, charge.y, angle, 300, arrowAngle);
+        }
+        ctx.restore();
+    }
+
+    function drawArrow(cx, cy, lineAngle, dist, arrowAngle) {
+        const x = cx + Math.cos(lineAngle) * dist;
+        const y = cy + Math.sin(lineAngle) * dist;
+        
+        // 边界检查，优化性能
+        if(x < 0 || x > canvas.width || y < 0 || y > canvas.height) return;
+
+        const size = 6;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(arrowAngle);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-size, -size * 0.6);
+        ctx.lineTo(-size, size * 0.6);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(80, 80, 80, 0.6)";
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // === UI 与 MathJax 更新 ===
+    function updateUI() {
+        let latex = "";
+        
+        if (isInside) {
+            fluxOutput.className = "math-display inside";
+            // 如果电荷为0
+            if (charge.q === 0) {
+                 latex = `\\Phi_E = \\oint \\mathbf{E} \\cdot d\\mathbf{S} = 0 \\quad (\\text{电荷为0})`;
+            } else {
+                 // 显示具体的 q 值
+                 const qText = charge.q > 0 ? `${charge.q}q_0` : `(${charge.q}q_0)`;
+                 latex = `\\Phi_E = \\oint \\mathbf{E} \\cdot d\\mathbf{S} = \\frac{Q_{in}}{\\epsilon_0} = \\frac{${qText}}{\\epsilon_0}`;
+            }
+        } else {
+            fluxOutput.className = "math-display outside";
+            // 外部时通量始终为0
+            latex = `\\Phi_E = \\oint \\mathbf{E} \\cdot d\\mathbf{S} = 0 \\quad (\\text{电荷在外部})`;
+        }
+
+        fluxOutput.innerHTML = `$$ ${latex} $$`;
+        
+        // 触发 MathJax 渲染
+        if (window.MathJax) {
+            MathJax.typesetPromise([fluxOutput]).catch((err) => console.log(err));
+        }
+    }
+
+    // 初始化
+    updateUI();
+    draw();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>准静态过程做功与 p-V 图</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h2 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .description {
+            max-width: 800px;
+            text-align: center;
+            margin-bottom: 30px;
+            color: #555;
+            line-height: 1.6;
+        }
+        .interactive-container {
+            display: flex;
+            gap: 40px;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            align-items: center;
+        }
+        
+        /* 汽缸与活塞样式 */
+        .cylinder-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 300px;
+        }
+        .cylinder {
+            width: 100%;
+            height: 120px;
+            border: 4px solid #34495e;
+            border-left: none; /* 开口在左侧，假设活塞从左侧推入，或者相反。这里我们设定右侧封闭，左侧有活塞 */
+            position: relative;
+            background-color: #ecf0f1;
+            border-radius: 0 8px 8px 0;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        /* 旋转一下让开口在左侧，符合常规阅读习惯，其实右侧更符合x轴。改为开口在右，左侧封闭 */
+        .cylinder-reverse {
+            border: 4px solid #34495e;
+            border-right: none;
+            border-radius: 8px 0 0 8px;
+        }
+        .gas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background-color: rgba(231, 76, 60, 0.3);
+            transition: background-color 0.2s;
+        }
+        .piston {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 20px;
+            background-color: #7f8c8d;
+            cursor: ew-resize;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.2);
+        }
+        .piston::after {
+            content: "||";
+            color: white;
+            font-size: 10px;
+        }
+        .piston-rod {
+            position: absolute;
+            top: 50%;
+            height: 6px;
+            width: 150px;
+            background-color: #95a5a6;
+            transform: translateY(-50%);
+            left: 100%;
+        }
+        
+        /* 图表样式 */
+        .graph-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 1px solid #bdc3c7;
+            background-color: #fcfcfc;
+            border-radius: 4px;
+        }
+        
+        /* 数据面板 */
+        .data-panel {
+            margin-top: 20px;
+            padding: 15px 25px;
+            background: #e8f4f8;
+            border-left: 5px solid #3498db;
+            border-radius: 4px;
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.1em;
+            box-sizing: border-box;
+        }
+        .data-item span {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>准静态过程：外界对气体做功与 \(p-V\) 图</h2>
+    <div class="description">
+        拖动下方的活塞，改变气体的体积（\(V\)）。这是一个设定的<b>等温准静态过程</b>。你可以直观地看到，随着体积的变化，压强（\(p\)）会随之改变，且右侧 \(p-V\) 图中曲线下方的<b>阴影面积</b>，正是公式 \(W = -\int_{V_i}^{V_f} p \, \mathrm{d}V\) 的几何体现。
+    </div>
+
+    <div class="interactive-container">
+        <div class="cylinder-wrapper">
+            <div class="cylinder cylinder-reverse" id="cylinderBox">
+                <div class="gas" id="gasArea"></div>
+                <div class="piston" id="pistonHandle">
+                    <div class="piston-rod"></div>
+                </div>
+            </div>
+            <p style="color: #7f8c8d; font-size: 0.9em; margin-top: 15px;">← 左右拖动活塞 →</p>
+        </div>
+
+        <div class="graph-wrapper">
+            <canvas id="pvCanvas" width="350" height="250"></canvas>
+        </div>
+    </div>
+
+    <div class="data-panel">
+        <div class="data-item">当前体积 \(V\): <span id="val-v">200</span> L</div>
+        <div class="data-item">当前压强 \(p\): <span id="val-p">50</span> Pa</div>
+        <div class="data-item">外界做功 \(W\): <span id="val-w">0</span> J</div>
+    </div>
+
+    <script>
+        // 物理常量与状态初始化
+        const T = 300; // 假设等温过程
+        const nR = 10000; // 假设 nRT 为常数 10000，即 p*V = 10000
+        
+        // 汽缸 DOM 元素
+        const cylinderBox = document.getElementById('cylinderBox');
+        const pistonHandle = document.getElementById('pistonHandle');
+        const gasArea = document.getElementById('gasArea');
+        
+        // 数据显示 DOM
+        const valV = document.getElementById('val-v');
+        const valP = document.getElementById('val-p');
+        const valW = document.getElementById('val-w');
+
+        // Canvas 设置
+        const canvas = document.getElementById('pvCanvas');
+        const ctx = canvas.getContext('2d');
+        const padding = 40;
+        
+        // 状态变量
+        let initialV = 200; // 初始体积
+        let currentV = 200; // 当前体积
+        const minV = 50;
+        const maxV = 280;
+        let isDragging = false;
+
+        // 初始化视图
+        updatePhysics(initialV);
+
+        // --- 拖拽交互逻辑 ---
+        pistonHandle.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            document.body.style.cursor = 'ew-resize';
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+            document.body.style.cursor = 'default';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            // 计算鼠标相对于汽缸左侧的位置
+            const rect = cylinderBox.getBoundingClientRect();
+            let newWidth = e.clientX - rect.left;
+            
+            // 限制活塞移动范围 (模拟体积的极值)
+            if (newWidth < minV) newWidth = minV;
+            if (newWidth > maxV) newWidth = maxV;
+            
+            updatePhysics(newWidth);
+        });
+
+        // --- 物理计算与视图更新核心函数 ---
+        function updatePhysics(v) {
+            currentV = v;
+            
+            // 1. 更新汽缸 UI
+            pistonHandle.style.left = currentV + 'px';
+            gasArea.style.width = currentV + 'px';
+            
+            // 压强变大（体积变小）时，气体颜色变深（模拟变红/变热的错觉，虽然这里是等温）
+            const pressureRatio = maxV / currentV;
+            gasArea.style.backgroundColor = `rgba(231, 76, 60, ${0.1 + pressureRatio * 0.15})`;
+
+            // 2. 物理量计算
+            const p = nR / currentV;
+            // 外界对气体做功 W = - integral(p dV)
+            // 等温过程 W = - nRT * ln(V_f / V_i)
+            const workDoneOnGas = -nR * Math.log(currentV / initialV);
+
+            // 3. 更新数值面板
+            valV.innerText = currentV.toFixed(1);
+            valP.innerText = p.toFixed(1);
+            valW.innerText = workDoneOnGas.toFixed(1);
+
+            // 4. 重绘图表
+            drawGraph(currentV, p);
+        }
+
+        // --- 绘制 p-V 坐标图 ---
+        function drawGraph(v, p) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const originX = padding;
+            const originY = canvas.height - padding;
+            const width = canvas.width - padding * 1.5;
+            const height = canvas.height - padding * 1.5;
+
+            // 绘制坐标轴
+            ctx.beginPath();
+            ctx.moveTo(originX, padding / 2); // Y轴
+            ctx.lineTo(originX, originY);
+            ctx.lineTo(canvas.width - padding / 2, originY); // X轴
+            ctx.strokeStyle = '#2c3e50';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // 坐标轴标签
+            ctx.font = '14px Arial';
+            ctx.fillStyle = '#2c3e50';
+            ctx.fillText('p', originX - 20, padding);
+            ctx.fillText('V', canvas.width - padding, originY + 20);
+
+            // 坐标映射比例
+            const scaleV = width / maxV;
+            const maxP = nR / minV;
+            const scaleP = height / maxP;
+
+            // 绘制等温线 (底图参考线)
+            ctx.beginPath();
+            for (let i = minV; i <= maxV; i++) {
+                let px = originX + i * scaleV;
+                let py = originY - (nR / i) * scaleP;
+                if (i === minV) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.strokeStyle = '#bdc3c7';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 5]); // 虚线
+            ctx.stroke();
+            ctx.setLineDash([]); // 恢复实线
+
+            // 绘制当前过程的积分面积
+            ctx.beginPath();
+            const startV = Math.min(initialV, currentV);
+            const endV = Math.max(initialV, currentV);
+            
+            ctx.moveTo(originX + startV * scaleV, originY); // 面积起点底部
+            for (let i = startV; i <= endV; i++) {
+                let px = originX + i * scaleV;
+                let py = originY - (nR / i) * scaleP;
+                ctx.lineTo(px, py);
+            }
+            ctx.lineTo(originX + endV * scaleV, originY); // 面积终点底部
+            ctx.closePath();
+            
+            // 根据膨胀或压缩使用不同颜色
+            if (currentV < initialV) {
+                ctx.fillStyle = 'rgba(46, 204, 113, 0.3)'; // 压缩：外界做正功（绿色）
+            } else {
+                ctx.fillStyle = 'rgba(231, 76, 60, 0.3)'; // 膨胀：外界做负功（红色）
+            }
+            if(currentV !== initialV) {
+                ctx.fill();
+            }
+
+            // 绘制初始状态点 A
+            const ax = originX + initialV * scaleV;
+            const ay = originY - (nR / initialV) * scaleP;
+            ctx.beginPath();
+            ctx.arc(ax, ay, 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#f39c12';
+            ctx.fill();
+            ctx.fillText('初始状态', ax + 8, ay - 8);
+
+            // 绘制当前状态点 B
+            const bx = originX + currentV * scaleV;
+            const by = originY - p * scaleP;
+            ctx.beginPath();
+            ctx.arc(bx, by, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#e74c3c';
+            ctx.fill();
+            
+            // 绘制当前状态到坐标轴的垂线
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            ctx.lineTo(bx, originY);
+            ctx.moveTo(bx, by);
+            ctx.lineTo(originX, by);
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    </script>
+</body>
+</html>

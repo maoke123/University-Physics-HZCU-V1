@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>四种基本热力学过程动态对比</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f4f8;
+            color: #2c3e50;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h2 { margin-bottom: 5px; color: #1a252f; }
+        .description {
+            max-width: 900px;
+            text-align: center;
+            margin-bottom: 20px;
+            color: #555;
+            line-height: 1.6;
+        }
+        
+        .main-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 1100px;
+            justify-content: space-between;
+        }
+
+        /* --- 左侧：实验台区域 --- */
+        .lab-panel {
+            flex: 1;
+            min-width: 350px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background: #fafbfc;
+            border-radius: 8px;
+            border: 1px solid #e1e8ed;
+            position: relative;
+        }
+
+        /* 汽缸模型 */
+        .cylinder-wrapper {
+            position: relative;
+            width: 250px;
+            height: 140px;
+            margin-top: 30px;
+            margin-bottom: 40px;
+        }
+        .cylinder {
+            position: absolute;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            border: 6px solid #34495e;
+            border-right: none;
+            border-radius: 10px 0 0 10px;
+            box-sizing: border-box;
+            background: #fff;
+            z-index: 2;
+        }
+        /* 绝热层表现 */
+        .insulation {
+            position: absolute;
+            left: -12px; top: -12px;
+            width: calc(100% + 12px); height: calc(100% + 24px);
+            border: 10px dashed #f39c12;
+            border-right: none;
+            border-radius: 15px 0 0 15px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1;
+        }
+        .gas {
+            position: absolute;
+            left: 0; top: 0;
+            height: 100%;
+            background-color: rgba(231, 76, 60, 0.4); /* 默认温度颜色 */
+            transition: background-color 0.1s;
+        }
+        .piston {
+            position: absolute;
+            top: 0; height: 100%;
+            width: 24px;
+            background-color: #7f8c8d;
+            z-index: 3;
+            box-shadow: -3px 0 10px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+        }
+        .piston-rod {
+            position: absolute;
+            left: 100%;
+            height: 8px; width: 100px;
+            background-color: #95a5a6;
+        }
+
+        /* 仪表盘（温度与压强） */
+        .gauges {
+            display: flex;
+            gap: 30px;
+            width: 100%;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .gauge {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-weight: bold;
+        }
+        .thermometer {
+            width: 16px; height: 80px;
+            border: 2px solid #333;
+            border-radius: 8px 8px 0 0;
+            position: relative;
+            background: #eee;
+            margin-bottom: 5px;
+        }
+        .thermometer-fill {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%;
+            background: #e74c3c;
+            height: 50%;
+            border-radius: 0 0 0 0;
+            transition: height 0.1s, background 0.1s;
+        }
+        .thermometer-bulb {
+            width: 28px; height: 28px;
+            background: #e74c3c;
+            border-radius: 50%;
+            position: absolute;
+            bottom: -15px; left: -8px;
+            border: 2px solid #333;
+            transition: background 0.1s;
+        }
+        
+        /* 交互特效提示 */
+        .effect-icon {
+            position: absolute;
+            bottom: -40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        /* --- 中间：图表区域 --- */
+        .graph-panel {
+            flex: 1.2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 1px solid #bdc3c7;
+            background: #fdfdfd;
+            border-radius: 6px;
+        }
+
+        /* --- 底部：控制台与公式 --- */
+        .control-board {
+            width: 100%;
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .buttons {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        button {
+            padding: 12px 15px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.1s, filter 0.2s;
+        }
+        button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+        button:active { transform: translateY(0); }
+        
+        .btn-isochoric { background: #9b59b6; }
+        .btn-isobaric { background: #3498db; }
+        .btn-isothermal { background: #2ecc71; }
+        .btn-adiabatic { background: #e67e22; }
+        .btn-reset { background: #95a5a6; grid-column: span 2; }
+
+        .math-board {
+            flex: 2;
+            background: #e8f4f8;
+            padding: 15px 25px;
+            border-left: 5px solid #2980b9;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .math-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .status-values {
+            font-family: monospace;
+            font-size: 1.2em;
+            color: #c0392b;
+            background: rgba(255,255,255,0.7);
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>四种基本热力学过程动态对比</h2>
+    <div class="description">
+        所有的过程都从<b>同一个初始状态（状态 A）</b>出发。点击下方的按钮，观察汽缸的变化（绝热层、火焰、活塞移动），对比温度计和压强计的读数，并特别注意右侧 \(p-V\) 图中<b>等温线与绝热线</b>陡峭程度的区别。
+    </div>
+
+    
+
+    <div class="main-container">
+        
+        <div class="lab-panel">
+            <div class="gauges">
+                <div class="gauge">
+                    <div class="thermometer">
+                        <div class="thermometer-fill" id="t-fill"></div>
+                        <div class="thermometer-bulb" id="t-bulb"></div>
+                    </div>
+                    <span>温度 \(T\)</span>
+                </div>
+                <div class="gauge">
+                    <div style="font-size: 2em; color: #2980b9;" id="p-text">1.00</div>
+                    <span>压强 \(p\) (atm)</span>
+                </div>
+            </div>
+
+            <div class="cylinder-wrapper">
+                <div class="insulation" id="insulation-layer"></div>
+                <div class="cylinder">
+                    <div class="gas" id="gas-area"></div>
+                    <div class="piston" id="piston-obj">
+                        <div class="piston-rod"></div>
+                    </div>
+                </div>
+                <div class="effect-icon" id="fire-icon">🔥 加热中</div>
+            </div>
+        </div>
+
+        <div class="graph-panel">
+            <canvas id="pvCanvas" width="450" height="300"></canvas>
+        </div>
+
+        <div class="control-board">
+            <div class="buttons">
+                <button class="btn-isochoric" onclick="startProcess('isochoric')">等容加热 (V不变)</button>
+                <button class="btn-isobaric" onclick="startProcess('isobaric')">等压膨胀 (p不变)</button>
+                <button class="btn-isothermal" onclick="startProcess('isothermal')">等温膨胀 (T不变)</button>
+                <button class="btn-adiabatic" onclick="startProcess('adiabatic')">绝热膨胀 (Q=0)</button>
+                <button class="btn-reset" onclick="resetSystem()">↺ 恢复初始状态 A</button>
+            </div>
+
+            <div class="math-board">
+                <div class="math-row">
+                    <strong style="color:#2c3e50; font-size: 1.1em;" id="process-title">请选择一个过程</strong>
+                    <div class="status-values">
+                        \(V\): <span id="val-v">1.0</span> L &nbsp;|&nbsp; \(T\): <span id="val-t">300</span> K
+                    </div>
+                </div>
+                <hr style="border: 0; border-top: 1px dashed #bdc3c7; width: 100%; margin: 5px 0 15px 0;">
+                <div id="math-formulas" style="min-height: 60px;">
+                    热力学第一定律：\(\Delta E = Q + W\) <br>
+                    (等待选择过程以显示特征公式)
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 物理常量与初始状态设置 ---
+        const R = 8.31;
+        const gamma = 1.4; // 双原子气体绝热指数
+        
+        // 初始状态 A (起点)
+        const initialState = { v: 100, p: 100, t: 300 };
+        // const nR = p*V/T = 100*100/300 = 33.333
+        const nR = (initialState.p * initialState.v) / initialState.t; 
+        
+        // 动画状态
+        let currentState = { ...initialState };
+        let targetState = { ...initialState };
+        let isAnimating = false;
+        let animationFrame;
+        let currentProcessType = 'none';
+
+        // --- DOM 元素获取 ---
+        const pistonObj = document.getElementById('piston-obj');
+        const gasArea = document.getElementById('gas-area');
+        const insulationLayer = document.getElementById('insulation-layer');
+        const fireIcon = document.getElementById('fire-icon');
+        const tFill = document.getElementById('t-fill');
+        const tBulb = document.getElementById('t-bulb');
+        const pText = document.getElementById('p-text');
+        const valV = document.getElementById('val-v');
+        const valT = document.getElementById('val-t');
+        
+        const canvas = document.getElementById('pvCanvas');
+        const ctx = canvas.getContext('2d');
+        const pad = 40;
+
+        // 图表比例映射常量
+        const maxV = 250;
+        const maxP = 250;
+        function getX(v) { return pad + (v / maxV) * (canvas.width - pad * 1.5); }
+        function getY(p) { return canvas.height - pad - (p / maxP) * (canvas.height - pad * 1.5); }
+
+        // --- 核心逻辑：启动过程 ---
+        function startProcess(type) {
+            if(isAnimating) return;
+            resetSystemInstantly(); // 确保每次从 A 点出发
+            currentProcessType = type;
+            
+            // 隐藏所有特效
+            insulationLayer.style.opacity = '0';
+            fireIcon.style.opacity = '0';
+
+            let title = "";
+            let formulas = "";
+
+            switch(type) {
+                case 'isochoric': // 等容加热: V不变, p翻倍, T翻倍
+                    targetState = { v: 100, p: 200, t: 600 };
+                    fireIcon.style.opacity = '1';
+                    fireIcon.innerText = "🔥 吸热 Q > 0";
+                    title = "等容过程 (Isochoric)";
+                    formulas = `\\(W = 0\\) ，气体不做功。<br>\\(Q = \\Delta E = \\nu C_V \\Delta T\\) ，吸收的热量全部用于增加内能。`;
+                    break;
+                case 'isobaric': // 等压膨胀: p不变, V变大, T变大
+                    targetState = { v: 200, p: 100, t: 600 };
+                    fireIcon.style.opacity = '1';
+                    fireIcon.innerText = "🔥 吸热 Q > 0";
+                    title = "等压过程 (Isobaric)";
+                    formulas = `\\(W = -p(V_2 - V_1)\\) ，气体对外做功。<br>\\(Q = \\nu C_p \\Delta T\\) ，吸收热量一部分增加内能，一部分对外做功。`;
+                    break;
+                case 'isothermal': // 等温膨胀: T不变, V变大, p变小
+                    targetState = { v: 200, p: 50, t: 300 };
+                    fireIcon.style.opacity = '1';
+                    fireIcon.innerText = "🔥 缓慢吸热 Q = -W";
+                    title = "等温过程 (Isothermal)";
+                    formulas = `\\(\\Delta E = 0\\) ，内能不变。<br>\\(Q = -W = \\nu RT \\ln(V_2/V_1)\\) ，吸收的热量全部转化为对外做功。曲线方程：\\(pV = C\\)`;
+                    break;
+                case 'adiabatic': // 绝热膨胀: Q=0, V变大, p急剧变小, T变小
+                    targetState = { v: 200, p: 100 * Math.pow(100/200, gamma), t: 0 }; // t 会自动计算
+                    targetState.t = (targetState.p * targetState.v) / nR;
+                    insulationLayer.style.opacity = '1'; // 显示绝热层
+                    title = "绝热过程 (Adiabatic)";
+                    formulas = `\\(Q = 0\\) ，无热量交换。<br>\\(W = \\Delta E = \\nu C_V (T_2 - T_1)\\) ，气体对外做功完全消耗自身内能，温度下降。曲线方程：\\(pV^\\gamma = C\\)`;
+                    break;
+            }
+
+            // 更新公式面板
+            document.getElementById('process-title').innerText = title;
+            document.getElementById('math-formulas').innerHTML = formulas;
+            MathJax.typesetPromise([document.getElementById('math-formulas')]);
+
+            // 开始动画
+            isAnimating = true;
+            animateProcess();
+        }
+
+        function resetSystem() {
+            currentProcessType = 'none';
+            document.getElementById('process-title').innerText = "初始状态 A";
+            document.getElementById('math-formulas').innerHTML = "热力学第一定律：\\(\\Delta E = Q + W\\)";
+            MathJax.typesetPromise([document.getElementById('math-formulas')]);
+            insulationLayer.style.opacity = '0';
+            fireIcon.style.opacity = '0';
+            targetState = { ...initialState };
+            isAnimating = true;
+            animateProcess();
+        }
+
+        function resetSystemInstantly() {
+            currentState = { ...initialState };
+            updateUI();
+            drawGraph();
+        }
+
+        // --- 动画循环 ---
+        function animateProcess() {
+            // 简单的插值动画
+            let speed = 0.02;
+            let dv = targetState.v - currentState.v;
+            let dp = targetState.p - currentState.p;
+
+            if (Math.abs(dv) < 0.5 && Math.abs(dp) < 0.5) {
+                currentState.v = targetState.v;
+                currentState.p = targetState.p;
+                isAnimating = false;
+            } else {
+                currentState.v += dv * speed;
+                
+                // 确保动画过程也遵循物理规律
+                if(currentProcessType === 'isothermal') {
+                    currentState.p = (nR * initialState.t) / currentState.v;
+                } else if (currentProcessType === 'adiabatic') {
+                    currentState.p = initialState.p * Math.pow(initialState.v / currentState.v, gamma);
+                } else {
+                    currentState.p += dp * speed;
+                }
+            }
+            
+            // 实时计算 T
+            currentState.t = (currentState.p * currentState.v) / nR;
+
+            updateUI();
+            drawGraph();
+
+            if (isAnimating) {
+                animationFrame = requestAnimationFrame(animateProcess);
+            }
+        }
+
+        // --- 更新 UI 视图 ---
+        function updateUI() {
+            // 1. 活塞位移 (映射 v 到像素)
+            let pxWidth = (currentState.v / 250) * 250;
+            pistonObj.style.left = pxWidth + 'px';
+            gasArea.style.width = pxWidth + 'px';
+
+            // 2. 气体颜色与温度计 (根据 T 变化)
+            // 设定 300K 为基准色，600K 最红， 0K 最蓝(理论)
+            let tRatio = (currentState.t - 150) / 450; // 0 到 1
+            if (tRatio > 1) tRatio = 1; if (tRatio < 0) tRatio = 0;
+            
+            let r = Math.floor(50 + 205 * tRatio);
+            let b = Math.floor(250 - 200 * tRatio);
+            let colorStr = `rgba(${r}, 50, ${b}, 0.5)`;
+            
+            gasArea.style.backgroundColor = colorStr;
+            tFill.style.background = `rgb(${r}, 50, ${b})`;
+            tBulb.style.background = `rgb(${r}, 50, ${b})`;
+            tFill.style.height = (currentState.t / 800 * 100) + '%'; // 温度计液面高度
+
+            // 3. 数值更新
+            pText.innerText = (currentState.p / 100).toFixed(2); // 假设100对应1atm
+            valV.innerText = (currentState.v / 100).toFixed(2);
+            valT.innerText = Math.round(currentState.t);
+        }
+
+        // --- 绘制图表 ---
+        function drawGraph() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 坐标轴
+            ctx.beginPath();
+            ctx.moveTo(pad, 10); ctx.lineTo(pad, canvas.height - pad); ctx.lineTo(canvas.width - 10, canvas.height - pad);
+            ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 2; ctx.stroke();
+            
+            ctx.font = '14px Arial'; ctx.fillStyle = '#2c3e50';
+            ctx.fillText('p', pad - 20, 20); ctx.fillText('V', canvas.width - 20, canvas.height - pad + 20);
+
+            // 绘制背景参考线 (等温线与绝热线对比)
+            if(currentProcessType === 'isothermal' || currentProcessType === 'adiabatic') {
+                // 等温参考线 (绿色虚线)
+                ctx.beginPath();
+                for(let v = initialState.v; v <= targetState.v; v+=5) {
+                    let p = (nR * initialState.t) / v;
+                    v === initialState.v ? ctx.moveTo(getX(v), getY(p)) : ctx.lineTo(getX(v), getY(p));
+                }
+                ctx.strokeStyle = 'rgba(46, 204, 113, 0.4)'; ctx.lineWidth = 2; ctx.setLineDash([5,5]); ctx.stroke();
+                
+                // 绝热参考线 (橙色虚线)
+                ctx.beginPath();
+                for(let v = initialState.v; v <= 200; v+=5) {
+                    let p = initialState.p * Math.pow(initialState.v / v, gamma);
+                    v === initialState.v ? ctx.moveTo(getX(v), getY(p)) : ctx.lineTo(getX(v), getY(p));
+                }
+                ctx.strokeStyle = 'rgba(230, 126, 34, 0.4)'; ctx.lineWidth = 2; ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // 绘制当前路径
+            ctx.beginPath();
+            ctx.moveTo(getX(initialState.v), getY(initialState.p));
+            
+            if (currentProcessType === 'isochoric') {
+                ctx.lineTo(getX(currentState.v), getY(currentState.p));
+            } else if (currentProcessType === 'isobaric') {
+                ctx.lineTo(getX(currentState.v), getY(currentState.p));
+            } else if (currentProcessType === 'isothermal') {
+                for(let v = initialState.v; v <= currentState.v; v++) {
+                    ctx.lineTo(getX(v), getY((nR * initialState.t) / v));
+                }
+            } else if (currentProcessType === 'adiabatic') {
+                for(let v = initialState.v; v <= currentState.v; v++) {
+                    ctx.lineTo(getX(v), getY(initialState.p * Math.pow(initialState.v / v, gamma)));
+                }
+            }
+            
+            ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 3; ctx.stroke();
+
+            // 绘制初始点 A
+            ctx.beginPath(); ctx.arc(getX(initialState.v), getY(initialState.p), 5, 0, Math.PI*2);
+            ctx.fillStyle = '#34495e'; ctx.fill();
+            ctx.fillText('A', getX(initialState.v) - 15, getY(initialState.p) + 5);
+
+            // 绘制当前点
+            ctx.beginPath(); ctx.arc(getX(currentState.v), getY(currentState.p), 6, 0, Math.PI*2);
+            ctx.fillStyle = '#e74c3c'; ctx.fill();
+        }
+
+        // 初始化
+        resetSystemInstantly();
+    </script>
+</body>
+</html>

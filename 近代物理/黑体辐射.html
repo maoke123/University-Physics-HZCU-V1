@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>黑体辐射：普朗克定律 (自动缩放版)</title>
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        :root { --bg: #f4f7f6; --axis: #333; --laser: #ff0000; --kp-color: #008000; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .container { width: 960px; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid #ccc; }
+        
+        h1 { text-align:center; color: #2c3e50; margin-top: 0; }
+        
+        /* 绘图画布 */
+        .plot-container { position: relative; margin: 20px 0; background: #fdfdfd; border: 1px solid #ddd; border-radius: 8px; }
+        canvas { display: block; cursor: crosshair; }
+
+        /* 控制面板 */
+        .controls { 
+            display: flex; justify-content: space-around; align-items: center; 
+            background: #eee; padding: 15px; border-radius: 8px; margin-top: 15px;
+        }
+        .slider-group { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        input[type=range] { width: 350px; cursor: pointer; }
+        .temp-display { font-size: 1.6em; font-weight: bold; color: #e74c3c; }
+
+        /* 结论提示 */
+        .info-card { 
+            margin-top: 20px; padding: 15px; border-left: 5px solid var(--kp-color); 
+            background: #f0fdf4; line-height: 1.6; color: #166534;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>黑体辐射能谱：普朗克定律演示</h1>
+
+    <div style="text-align: center; margin-bottom: 20px;">
+        普朗克辐射定律（波长形式）：
+        $$B_\lambda(\lambda, T) = \frac{2hc^2}{\lambda^5} \frac{1}{e^{\frac{hc}{\lambda k_B T}} - 1}$$
+    </div>
+
+    <div class="plot-container">
+        <canvas id="planckCanvas" width="850" height="450"></canvas>
+    </div>
+
+    <div class="controls">
+        <div class="slider-group">
+            <label>调节黑体温度 (K)</label>
+            <input type="range" id="tempSlider" min="1000" max="10000" step="100" value="5000">
+            <div class="temp-display"><span id="tempVal">5000</span> K</div>
+        </div>
+        <div style="max-width: 320px; font-size: 0.95em; color: #555; border-left: 2px solid #ccc; padding-left:15px;">
+            <strong>交互提示：</strong> 调节滑块。开启<strong>自动缩放</strong>后，Y轴最大值随温度动态调整，确保始终能清晰观察曲线峰值和维恩位移。
+        </div>
+    </div>
+
+    <div class="info-card">
+        <strong>物理结论与观察点：</strong>
+        <ul>
+            <li><strong>维恩位移定律：</strong> $\lambda_{max} T = \text{常数}$。观察温度越高（滑块向右），红色曲线的峰值 $\lambda_{max}$ 越偏向短波（nm）方向。</li>
+            <li><strong>斯特藩-玻尔兹曼定律：</strong> 辐射总功率 $P \propto T^4$。即曲线下方的总面积随温度升高剧烈增加。</li>
+            <li><strong>可见光区：</strong> 380 nm - 780 nm（彩色背景区域）。</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('planckCanvas');
+    const ctx = canvas.getContext('2d');
+    const slider = document.getElementById('tempSlider');
+    const tempVal = document.getElementById('tempVal');
+
+    // 物理常数
+    const h = 6.62607e-34;  // 普朗克常数
+    const c = 2.99792e8;   // 光速
+    const k = 1.38065e-23;  // 玻尔兹曼常数
+
+    // 可见光范围 (nm)
+    const visStart = 380;
+    const visEnd = 780;
+
+    function planck(lambda, T) {
+        // lambda 单位必须是米
+        const a = (2 * h * c * c) / Math.pow(lambda, 5);
+        const b = Math.exp((h * c) / (lambda * k * T)) - 1;
+        if (b === Infinity) return 0; // 避免低波长导致溢出
+        return a / b;
+    }
+
+    function draw() {
+        const T = parseInt(slider.value);
+        tempVal.innerText = T;
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // --- 核心改进：自动缩放 ---
+        // 1. 计算维恩位移峰值波长 (简化公式 b/T)
+        const lambdaMax = 2.897e-3 / T; 
+        const lambdaMax_nm = lambdaMax * 1e9;
+        
+        // 2. 计算峰值辐射强度
+        const maxIntensity = planck(lambdaMax, T);
+
+        // 3. 设定 Y 轴刻度 (在峰值基础上留出空间)
+        const yMax = maxIntensity * 1.15; // 留出 15% 边距
+
+        // 定义画布内边距和物理范围
+        const padding = { left: 80, bottom: 60, top: 40, right: 20 };
+        const w = canvas.width - padding.left - padding.right;
+        const h_plot = canvas.height - padding.top - padding.bottom;
+        const xMin_nm = 100; // 起始波长
+        const xMax_nm = 3000; // 终止波长 (覆盖红外)
+
+        // 坐标变换辅助函数
+        function getX(l_nm) { return padding.left + ((l_nm - xMin_nm) / (xMax_nm - xMin_nm)) * w; }
+        function getY(int) { return (canvas.height - padding.bottom) - (int / yMax) * h_plot; }
+
+        // --- 绘制可见光带 (模拟光谱) ---
+        const grd = ctx.createLinearGradient(getX(visStart), 0, getX(visEnd), 0);
+        grd.addColorStop(0.0, "rgba(148, 0, 211, 0.15)"); // 紫
+        grd.addColorStop(0.2, "rgba(0, 0, 255, 0.15)");   // 蓝
+        grd.addColorStop(0.4, "rgba(0, 255, 0, 0.15)");   // 绿
+        grd.addColorStop(0.6, "rgba(255, 255, 0, 0.15)"); // 黄
+        grd.addColorStop(1.0, "rgba(255, 0, 0, 0.15)");   // 红
+        ctx.fillStyle = grd;
+        ctx.fillRect(getX(visStart), getY(yMax), getX(visEnd) - getX(visStart), h_plot);
+
+        // --- 绘制坐标轴和刻度 ---
+        ctx.beginPath();
+        ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+        ctx.moveTo(padding.left, getY(yMax)-5); ctx.lineTo(padding.left, getY(0)); // Y
+        ctx.lineTo(getX(xMax_nm)+5, getY(0)); // X
+        ctx.stroke();
+
+        ctx.fillStyle = '#666'; ctx.font = 'bold 12px sans-serif';
+        ctx.fillText("辐射强度 Bλ (W·sr⁻¹·m⁻³)", 10, padding.top - 15);
+        ctx.fillText("波长 λ (nm)", canvas.width - padding.right - 80, canvas.height - 15);
+
+        // X 轴刻度 (nm)
+        [500, 1000, 1500, 2000, 2500, 3000].forEach(tick => {
+            const x = getX(tick);
+            ctx.beginPath(); ctx.moveTo(x, getY(0)); ctx.lineTo(x, getY(0)+5); ctx.stroke();
+            ctx.fillText(tick, x - 15, getY(0) + 20);
+        });
+
+        // Y 轴刻度 (科学计数法)
+        const numTicksY = 5;
+        for (let i = 0; i <= numTicksY; i++) {
+            const val = (yMax / numTicksY) * i;
+            const y = getY(val);
+            ctx.beginPath(); ctx.moveTo(padding.left-5, y); ctx.lineTo(padding.left, y); ctx.stroke();
+            if (i > 0) ctx.fillText(val.toExponential(1), padding.left - 75, y + 4);
+        }
+
+        // --- 绘制普朗克曲线 ---
+        ctx.beginPath();
+        ctx.lineWidth = 2.5;
+        // 根据温度改变颜色 (低蓝高红)
+        ctx.strokeStyle = `rgb(${Math.min(255, T/40)}, 40, ${Math.max(0, 255 - T/30)})`;
+
+        for (let l_nm = xMin_nm; l_nm <= xMax_nm; l_nm += 10) {
+            const lambda_m = l_nm * 1e-9;
+            const intensity = planck(lambda_m, T);
+            const x = getX(l_nm);
+            const y = getY(intensity);
+            
+            if (l_nm === xMin_nm) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // --- 标注峰值 $\lambda_{max}$ ---
+        ctx.fillStyle = '#d32f2f'; ctx.font = 'bold 14px monospace';
+        const pxMax = getX(lambdaMax_nm);
+        const pyMax = getY(maxIntensity);
+        ctx.fillText(`λmax ≈ ${Math.round(lambdaMax_nm)} nm`, pxMax + 10, pyMax - 10);
+        
+        // 维恩位移辅助虚线
+        ctx.beginPath();
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = '#d32f2f';
+        ctx.moveTo(pxMax, pyMax);
+        ctx.lineTo(pxMax, getY(0));
+        ctx.stroke();
+        ctx.setLineDash([]); // 还原
+    }
+
+    slider.oninput = draw;
+    // 监听滑块释放，更新 MathJax 渲染提示文本中的公式数值
+    slider.onchange = function() {
+        if (window.MathJax) MathJax.typesetPromise();
+    }
+    
+    // 初始化数值
+    draw();
+</script>
+
+</body>
+</html>

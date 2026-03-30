@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电场强度分布 - 动态公式联动</title>
+    
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f4f6f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .main-container {
+            display: flex;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.08);
+            overflow: hidden;
+            width: 1000px;
+            max-width: 95vw;
+        }
+
+        /* 左侧视图 */
+        .visual-panel {
+            flex: 1;
+            padding: 20px;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #fafafa;
+        }
+
+        /* 右侧图表与公式 */
+        .chart-panel {
+            flex: 1.2;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        canvas#physicsCanvas {
+            border-radius: 50%; /* 辅助视觉 */
+            cursor: crosshair;
+            box-shadow: 0 0 15px rgba(0,0,0,0.05);
+            background: white;
+        }
+
+        .controls {
+            margin-top: 20px;
+            background: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        /* 动态公式区域 */
+        #formula-box {
+            margin-top: 20px;
+            background: #eef2f5;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-left: 5px solid #007bff;
+            transition: all 0.3s ease;
+        }
+        
+        .formula-title {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .math-display {
+            font-size: 1.4em;
+            color: #333;
+        }
+
+        label { cursor: pointer; font-weight: 500; }
+        input[type="radio"] { margin-right: 8px; }
+
+    </style>
+</head>
+<body>
+
+    <h2 style="color:#333;">球体/球壳场强分布 ($E-r$) 深度联动</h2>
+
+    <div class="main-container">
+        <div class="visual-panel">
+            <h3 style="margin:0 0 15px 0; color:#555;">物理空间 (高斯面)</h3>
+            <canvas id="physicsCanvas" width="360" height="360"></canvas>
+            <p style="color: #666; font-size: 0.9em; margin-top:10px;">
+                拖动红色探测点 $P$ 改变距离 $r$
+            </p>
+        </div>
+
+        <div class="chart-panel">
+            <h3 style="margin:0 0 15px 0; color:#555;">$E-r$ 关系图</h3>
+            <div style="height: 300px; width: 100%;">
+                <canvas id="chartCanvas"></canvas>
+            </div>
+            
+            <div id="formula-box">
+                <div class="formula-title" id="region-label">当前区域: 内部</div>
+                <div class="math-display" id="math-output">$$ E = \dots $$</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <span style="font-weight:bold; color:#444;">选择模型：</span>
+        <label>
+            <input type="radio" name="modelType" value="solid" checked onchange="changeMode()"> 均匀带电球体
+        </label>
+        <label>
+            <input type="radio" name="modelType" value="shell" onchange="changeMode()"> 均匀带电球壳
+        </label>
+    </div>
+
+    <script>
+        // --- 全局变量配置 ---
+        const R_pixels = 100; // 球体半径 (像素)
+        const center = { x: 180, y: 180 };
+        let currentR = 50; // 当前探测点距离
+        let mode = 'solid'; // 'solid' 或 'shell'
+        let lastRegionState = ''; // 用于防抖动刷新 MathJax
+
+        // --- 1. 初始化 Chart.js ---
+        const ctxChart = document.getElementById('chartCanvas').getContext('2d');
+        const chart = new Chart(ctxChart, {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: '场强 E (理论值)',
+                        data: [],
+                        borderColor: '#007bff',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.1
+                    },
+                    {
+                        label: '当前位置 P',
+                        data: [{x: 0, y: 0}],
+                        backgroundColor: '#ff3b30', // 红色点
+                        borderColor: '#fff',
+                        borderWidth: 2,
+                        pointRadius: 8,
+                        type: 'scatter'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    x: {
+                        type: 'linear',
+                        min: 0, max: 300,
+                        title: { display: true, text: '距离 r (像素)' }
+                    },
+                    y: {
+                        min: 0, max: 1.2,
+                        title: { display: true, text: '电场强度 E (相对值)' }
+                    }
+                },
+                plugins: {
+                    tooltip: { enabled: false } // 禁用提示框以提高性能
+                }
+            }
+        });
+
+        // --- 2. 物理计算核心 ---
+        function calculateE(r) {
+            const kQ = 10000; // 虚拟常数
+            const R = R_pixels;
+            
+            if (mode === 'solid') {
+                // 均匀球体
+                if (r <= R) return (r / R); // 内部线性
+                return (R * R) / (r * r);   // 外部平方反比
+            } else {
+                // 球壳
+                if (r < R) return 0;        // 内部为0
+                return (R * R) / (r * r);   // 外部平方反比
+            }
+        }
+
+        // --- 3. 更新图表数据 ---
+        function updateChartData() {
+            const dataPoints = [];
+            // 生成曲线数据
+            for(let r=0; r<=300; r+=2) {
+                dataPoints.push({ x: r, y: calculateE(r) });
+            }
+            
+            // 处理球壳在 r=R 处的断点
+            if (mode === 'shell') {
+                // 确保图表显示跳变
+                // 这里简单处理，实际连续绘制即可
+            }
+
+            chart.data.datasets[0].data = dataPoints;
+            chart.data.datasets[1].data = [{ x: currentR, y: calculateE(currentR) }];
+            chart.update();
+        }
+
+        // --- 4. 绘制左侧物理视图 (Canvas) ---
+        const canvas = document.getElementById('physicsCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function drawScene() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // A. 绘制实体球/球壳
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, R_pixels, 0, Math.PI * 2);
+            if (mode === 'solid') {
+                // 实体渐变填充
+                const gradient = ctx.createRadialGradient(center.x, center.y, 10, center.x, center.y, R_pixels);
+                gradient.addColorStop(0, '#ffe0b2');
+                gradient.addColorStop(1, '#ffb74d');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            } else {
+                // 球壳描边
+                ctx.strokeStyle = '#ff9800';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(255, 152, 0, 0.05)';
+                ctx.fill();
+            }
+            // 标记球体半径 R
+            ctx.strokeStyle = '#e65100';
+            ctx.setLineDash([5, 5]);
+            ctx.lineWidth = 1;
+            ctx.stroke(); 
+            ctx.setLineDash([]); // 重置虚线
+
+            // B. 绘制高斯面 (动态虚线圆)
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, currentR, 0, Math.PI * 2);
+            ctx.strokeStyle = '#2979ff'; // 蓝色高斯面
+            ctx.lineWidth = 2;
+            ctx.setLineDash([8, 4]); // 虚线效果
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // C. 绘制探测点 P
+            // 计算P的坐标 (为了简单，我们在水平轴上移动P)
+            // 但为了支持拖拽，P的位置其实是由鼠标决定的，这里我们需要把currentR转换回坐标
+            // 简化：我们只画一个示意点，位置在圆周上，跟随鼠标角度
+            // 为简化交互，我们让P始终在水平右侧显示，或者直接用鼠标位置
+            // 更好的方式：P 就是鼠标位置
+        }
+        
+        // 专门绘制P点 (在 drawScene 中调用可能被覆盖，单独处理)
+        function drawProbe(x, y) {
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI*2);
+            ctx.fillStyle = '#ff3b30';
+            ctx.fill();
+            ctx.fillStyle = '#333';
+            ctx.font = "bold 14px Arial";
+            ctx.fillText("P", x + 10, y - 10);
+            
+            // 绘制半径文字
+            ctx.fillStyle = '#666';
+            ctx.font = "12px Arial";
+            ctx.fillText(`r = ${currentR.toFixed(0)}`, x + 10, y + 10);
+        }
+
+        // --- 5. MathJax 动态公式逻辑 ---
+        function updateFormula() {
+            let latex = "";
+            let regionText = "";
+            let regionState = ""; // 'inside' or 'outside'
+
+            if (currentR < R_pixels) {
+                regionState = 'inside';
+                regionText = `内部区域 ($r < R$)`;
+                
+                if (mode === 'solid') {
+                    // 均匀球体内部：线性
+                    // 强调 r 在分子上
+                    latex = `$$ E = \\frac{1}{4\\pi\\epsilon_0} \\frac{Q}{R^3} \\cdot \\color{red}{r} $$`;
+                    // 或者写成 $$ E = k \\rho \\frac{r}{3} $$ 视教材而定，这里用通用形式
+                } else {
+                    // 球壳内部：0
+                    latex = `$$ E = 0 $$`; 
+                }
+            } else {
+                regionState = 'outside';
+                regionText = `外部区域 ($r \\ge R$)`;
+                // 外部都是平方反比
+                latex = `$$ E = \\frac{1}{4\\pi\\epsilon_0} \\frac{Q}{\\color{red}{r^2}} $$`;
+            }
+
+            // 只有当状态改变（跨越边界）或切换模式时才重新渲染 MathJax，避免闪烁
+            if (regionState !== lastRegionState || window.forceFormulaUpdate) {
+                const outputDiv = document.getElementById('math-output');
+                const labelDiv = document.getElementById('region-label');
+                
+                labelDiv.innerHTML = regionText; // 更新文字标签
+                
+                // 更新 MathJax
+                outputDiv.innerHTML = latex;
+                MathJax.typesetPromise([outputDiv]).then(() => {
+                    // 渲染完成
+                });
+
+                lastRegionState = regionState;
+                window.forceFormulaUpdate = false;
+                
+                // 改变边框颜色提示状态变化
+                const box = document.getElementById('formula-box');
+                box.style.borderLeftColor = regionState === 'inside' ? '#00c853' : '#ff9100';
+            }
+            
+            // 即使MathJax不刷新，我们也需要让 mathjax 重新扫描一遍 regionText 里的 r < R
+             MathJax.typesetPromise([document.getElementById('region-label')]);
+        }
+
+        // --- 6. 交互事件处理 ---
+        let isDragging = false;
+
+        function handleMouse(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // 计算鼠标到圆心的距离 r
+            const dx = mouseX - center.x;
+            const dy = mouseY - center.y;
+            currentR = Math.sqrt(dx*dx + dy*dy);
+
+            // 限制最大范围防止图表溢出
+            if (currentR > 300) currentR = 300;
+
+            drawScene();
+            drawProbe(mouseX, mouseY); // 在鼠标位置画点
+            updateChartData();
+            updateFormula();
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            handleMouse(e);
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                // 稍微修正：如果在canvas外拖动也可以，需要判断target
+                // 简单起见，只监听canvas内的
+                if(e.target === canvas) handleMouse(e);
+            }
+        });
+        window.addEventListener('mouseup', () => { isDragging = false; });
+
+        function changeMode() {
+            const radios = document.getElementsByName('modelType');
+            for (let r of radios) {
+                if (r.checked) mode = r.value;
+            }
+            window.forceFormulaUpdate = true; // 强制刷新公式
+            drawScene();
+            // 模拟一次鼠标位置（保持P点位置不变，但重新计算E）
+            // 这里简单重绘中心点+R处的图
+            updateChartData();
+            updateFormula();
+        }
+
+        // --- 启动初始化 ---
+        // 模拟鼠标在 r=50 处
+        window.forceFormulaUpdate = true;
+        updateChartData();
+        drawScene();
+        // 初始画一个点在右侧
+        drawProbe(center.x + 50, center.y);
+        updateFormula();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>场强叠加原理交互实验 - 完美演示版</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: rgba(30, 41, 59, 0.95);
+            --accent: #38bdf8;
+            --text: #f1f5f9;
+            --pos-color: #ef4444;
+            --neg-color: #3b82f6;
+            --p-color: #f59e0b;
+            --res-color: #4ade80; /* 更亮的绿色 */
+        }
+        body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+        
+        #canvas-container { flex: 1; position: relative; cursor: default; }
+        canvas { display: block; width: 100%; height: 100%; background-image: radial-gradient(#1e293b 1px, transparent 1px); background-size: 20px 20px; }
+        
+        #ui-panel {
+            width: 320px; background: var(--panel); border-left: 1px solid #334155; padding: 20px; 
+            display: flex; flex-direction: column; gap: 18px; box-shadow: -5px 0 20px rgba(0,0,0,0.3); z-index: 10;
+        }
+
+        h2 { margin: 0; font-size: 1.25rem; border-bottom: 1px solid #475569; padding-bottom: 12px; color: #fff; }
+        
+        .control-group { display: flex; gap: 10px; }
+        button {
+            flex: 1; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s;
+            color: white; font-size: 0.9rem;
+        }
+        .btn-add-pos { background: var(--pos-color); }
+        .btn-add-pos:hover { background: #dc2626; box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
+        .btn-add-neg { background: var(--neg-color); }
+        .btn-add-neg:hover { background: #2563eb; box-shadow: 0 0 10px rgba(59, 130, 246, 0.4); }
+        .btn-clear { background: #475569; }
+        .btn-clear:hover { background: #334155; }
+
+        .mode-switch {
+            background: #1e293b; padding: 5px; border-radius: 8px; display: flex; gap: 5px; border: 1px solid #334155;
+        }
+        .mode-btn {
+            flex: 1; background: transparent; color: #94a3b8; padding: 8px; font-size: 0.85rem;
+        }
+        .mode-btn.active {
+            background: var(--accent); color: #0f172a; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .legend { font-size: 0.85rem; color: #94a3b8; line-height: 2; margin-top: auto; border-top: 1px solid #334155; padding-top: 15px; }
+        .legend-item { display: flex; align-items: center; gap: 10px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+        
+        /* MathJax 公式容器样式 */
+        .formula-card {
+            background: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155;
+            text-align: center; color: var(--accent); min-height: 50px; display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+
+<div id="canvas-container">
+    <canvas id="labCanvas"></canvas>
+    <div style="position: absolute; top: 20px; left: 20px; pointer-events: none; color: rgba(255,255,255,0.4); font-size: 0.9rem;">
+        💡 提示：拖动 P 点靠近电荷观察合矢量变化
+    </div>
+</div>
+
+<div id="ui-panel">
+    <h2>场强叠加原理</h2>
+    
+    <div class="formula-card">
+        $$ \vec{E}_{total} = \sum_{i=1}^{n} \vec{E}_i $$
+    </div>
+
+    <div class="control-group">
+        <button class="btn-add-pos" onclick="addCharge(1)">+Q (正电荷)</button>
+        <button class="btn-add-neg" onclick="addCharge(-1)">-Q (负电荷)</button>
+    </div>
+    <button class="btn-clear" onclick="clearCharges()">清空所有电荷</button>
+
+    <div style="margin-top: 10px;">
+        <label style="font-size: 0.9rem; color: #cbd5e1; margin-bottom: 8px; display: block;">矢量合成演示模式：</label>
+        <div class="mode-switch">
+            <button class="mode-btn active" onclick="setMode('star')" id="btn-star">独立分量</button>
+            <button class="mode-btn" onclick="setMode('polygon')" id="btn-polygon">首尾相连</button>
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="dot" style="background:var(--p-color); box-shadow: 0 0 5px var(--p-color);"></span> 观测点 P (可拖动)</div>
+        <div class="legend-item"><span class="dot" style="background:#64748b"></span> 分矢量 (灰色)</div>
+        <div class="legend-item"><span class="dot" style="background:var(--res-color); box-shadow: 0 0 8px var(--res-color);"></span> <strong>合矢量 (高亮绿色)</strong></div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('labCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    let charges = [];
+    let pointP = { x: 0, y: 0, r: 10, isDragging: false };
+    let draggingCharge = null;
+    let viewMode = 'star'; 
+
+    // 核心修改：大幅增加视觉系数，让矢量更明显
+    const K_VISUAL = 25000; 
+    
+    // 限制最大长度，防止贴脸时箭头飞出屏幕
+    const MAX_VECTOR_LEN = 300;
+
+    function init() {
+        resize();
+        pointP.x = canvas.width / 2;
+        pointP.y = canvas.height / 2;
+        
+        // 预设场景：一正一负形成偶极子场
+        charges.push({ x: canvas.width/2 - 120, y: canvas.height/2, q: 1, r: 18 });
+        charges.push({ x: canvas.width/2 + 120, y: canvas.height/2, q: -1, r: 18 });
+
+        window.addEventListener('resize', resize);
+        canvas.addEventListener('mousedown', onMouseDown);
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        
+        animate();
+    }
+
+    function resize() {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        if(charges.length === 0) { 
+            pointP.x = canvas.width / 2;
+            pointP.y = canvas.height / 2;
+        }
+    }
+
+    function addCharge(sign) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 120 + Math.random() * 60;
+        charges.push({
+            x: pointP.x + Math.cos(angle) * dist,
+            y: pointP.y + Math.sin(angle) * dist,
+            q: sign,
+            r: 18
+        });
+    }
+
+    function clearCharges() {
+        charges = [];
+    }
+
+    function setMode(mode) {
+        viewMode = mode;
+        document.getElementById('btn-star').className = `mode-btn ${mode === 'star' ? 'active' : ''}`;
+        document.getElementById('btn-polygon').className = `mode-btn ${mode === 'polygon' ? 'active' : ''}`;
+    }
+
+    // 绘图辅助：画箭头
+    function drawArrow(startX, startY, vx, vy, color, width=2, label='', isGlowing=false) {
+        let mag = 30 * Math.sqrt(vx*vx + vy*vy);
+        if (mag < 3) return; 
+
+        // 限制超长矢量视觉效果，保留方向但截断长度，避免穿帮
+        // 实际上为了物理真实性最好不截断，但为了UI体验可以做软限制
+        // 这里不做硬截断，因为用户要求"比例放大"，但我们可以在外部控制 K 值
+        
+        const endX = startX + 30 * vx;
+        const endY = startY + 30 * vy;
+        const angle = Math.atan2(vy, vx);
+        // 箭头大小随线宽变化
+        const headLen = 12 + width; 
+
+        ctx.save();
+        if (isGlowing) {
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = color;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // 画箭头头部
+        ctx.beginPath();
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - headLen * Math.cos(angle - Math.PI/6), endY - headLen * Math.sin(angle - Math.PI/6));
+        ctx.lineTo(endX - headLen * Math.cos(angle + Math.PI/6), endY - headLen * Math.sin(angle + Math.PI/6));
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        if(label) {
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 16px Arial';
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = '#000';
+            ctx.fillText(label, endX + 15, endY + 5);
+        }
+        ctx.restore();
+    }
+
+    function drawDashedLine(x1, y1, x2, y2) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([5, 5]);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        let totalEx = 0;
+        let totalEy = 0;
+        let vectors = [];
+
+        // 1. 计算
+        charges.forEach((c, index) => {
+            const dx = pointP.x - c.x;
+            const dy = pointP.y - c.y;
+            const r2 = dx*dx + dy*dy;
+            const r = Math.sqrt(r2);
+            
+            if (r > 10) {
+                // 计算电场大小 E = kQ/r^2
+                // 这里 K_VISUAL 已经放大了
+                const mag = (K_VISUAL * Math.abs(c.q)) / r2;
+                
+                const dirSign = c.q > 0 ? 1 : -1;
+                const ex = (dx/r) * mag * dirSign;
+                const ey = (dy/r) * mag * dirSign;
+
+                vectors.push({ ex, ey, q: c.q });
+                totalEx += ex;
+                totalEy += ey;
+
+                // 只有在分量模式下才画虚线，避免乱
+                if(viewMode === 'star') drawDashedLine(c.x, c.y, pointP.x, pointP.y);
+            }
+        });
+
+        // 2. 绘制分矢量
+        if (viewMode === 'star') {
+            vectors.forEach(v => {
+                // 分矢量稍微细一点，颜色淡一点
+                drawArrow(pointP.x, pointP.y, v.ex, v.ey, '#94a3b8', 2);
+            });
+        } else {
+            // 首尾相连模式
+            let currentX = pointP.x;
+            let currentY = pointP.y;
+            
+            vectors.forEach((v) => {
+                drawArrow(currentX, currentY, v.ex, v.ey, '#94a3b8', 2);
+                
+                // 节点圆点
+                ctx.beginPath();
+                ctx.arc(currentX, currentY, 3, 0, Math.PI*2);
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.fill();
+
+                currentX += v.ex;
+                currentY += v.ey;
+            });
+        }
+
+        // 3. 绘制合矢量 (重点优化对象)
+        if (vectors.length > 0) {
+            // 绿色，加粗(6px)，带发光效果，带标签
+            drawArrow(pointP.x, pointP.y, totalEx, totalEy, '#4ade80', 6, 'E_total', true);
+        }
+
+        // 4. 绘制电荷
+        charges.forEach(c => {
+            // 辉光效果
+            ctx.save();
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = c.q > 0 ? 'rgba(239, 68, 68, 0.6)' : 'rgba(59, 130, 246, 0.6)';
+            
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+            ctx.fillStyle = c.q > 0 ? '#ef4444' : '#3b82f6';
+            ctx.fill();
+            
+            ctx.shadowBlur = 0; // 文字不需要辉光
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(c.q > 0 ? '+' : '-', c.x, c.y);
+            ctx.restore();
+        });
+
+        // 5. 绘制 P 点 (琥珀色)
+        ctx.save();
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(pointP.x, pointP.y, pointP.r, 0, Math.PI * 2);
+        ctx.fillStyle = '#f59e0b';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+
+        // P点文字
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('P', pointP.x, pointP.y - 18);
+
+        requestAnimationFrame(animate);
+    }
+
+    // --- 交互 ---
+    function onMouseDown(e) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        if (Math.hypot(mx - pointP.x, my - pointP.y) < pointP.r + 10) {
+            pointP.isDragging = true;
+            return;
+        }
+
+        for (let i = charges.length - 1; i >= 0; i--) {
+            const c = charges[i];
+            if (Math.hypot(mx - c.x, my - c.y) < c.r + 10) {
+                draggingCharge = c;
+                return;
+            }
+        }
+    }
+
+    function onMouseMove(e) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        if (pointP.isDragging) {
+            pointP.x = mx;
+            pointP.y = my;
+        } else if (draggingCharge) {
+            draggingCharge.x = mx;
+            draggingCharge.y = my;
+        }
+        
+        const hitP = Math.hypot(mx - pointP.x, my - pointP.y) < pointP.r + 5;
+        const hitC = charges.some(c => Math.hypot(mx - c.x, my - c.y) < c.r + 5);
+        canvas.style.cursor = (hitP || hitC) ? 'move' : 'default';
+    }
+
+    function onMouseUp() {
+        pointP.isDragging = false;
+        draggingCharge = null;
+    }
+
+    init();
+</script>
+</body>
+</html>

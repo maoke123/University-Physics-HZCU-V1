@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电磁波谱</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-main: #2c3e50;
+            --accent: #1976D2;
+            --border-color: #e0e0e0;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            margin: 0;
+        }
+
+        h1 { margin-bottom: 0.5rem; letter-spacing: 1px; }
+        .subtitle { color: #666; margin-bottom: 2rem; font-size: 0.95rem; }
+
+        /* --- 谱图容器 --- */
+        .spectrum-container {
+            width: 100%;
+            max-width: 1100px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            border: 1px solid #ddd;
+        }
+
+        /* 渐变条 */
+        .spectrum-bar {
+            height: 110px;
+            width: 100%;
+            /* 模拟书本上的颜色过渡 */
+            background: linear-gradient(to right, 
+                #555 0%,       /* 无线电 */
+                #555 25%,      /* 无线电较宽 */
+                #8b0000 35%,   /* 红外 */
+                #ff0000 45%,   /* 可见光起 */
+                #00ff00 47%,   
+                #0000ff 49%,   
+                #4b0082 55%,   /* 紫外 */
+                #1a1a1a 75%,   /* X射线 */
+                #000000 100%   /* 伽马 */
+            );
+            position: relative;
+        }
+
+        /* --- 交互按钮 --- */
+        .interactive-layer {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        .wave-btn {
+            flex: 1; 
+            background: rgba(0,0,0,0.3);
+            border: none;
+            border-right: 1px solid rgba(255,255,255,0.15);
+            color: rgba(255,255,255,0.9);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 0 4px;
+        }
+
+        .wave-btn[data-type="radio"] { flex: 2.5; } 
+        .wave-btn[data-type="gamma"] { flex: 1.2; }
+
+        .wave-btn:hover { background-color: rgba(255,255,255,0.15); }
+        .wave-btn.active {
+            background-color: rgba(255,255,255,0.4);
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+            color: #fff;
+            text-shadow: 0 2px 4px black;
+        }
+
+        .btn-name { font-size: 1.1rem; font-weight: bold; margin-bottom: 6px; }
+        .btn-range {
+            font-size: 0.8rem;
+            font-family: 'Consolas', monospace;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        /* --- 详情卡片 --- */
+        .info-card {
+            background: var(--card-bg);
+            width: 100%;
+            max-width: 900px;
+            padding: 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            min-height: 300px;
+            transition: all 0.3s ease;
+        }
+
+        .info-header {
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .info-title { font-size: 2.2rem; margin: 0; color: var(--text-main); }
+        
+        .main-data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .data-box {
+            background: #f8f9fa;
+            padding: 1.2rem;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent);
+        }
+
+        .data-label { font-size: 0.9rem; color: #666; display: block; margin-bottom: 0.5rem; }
+        .data-value { font-size: 1.2rem; font-weight: bold; color: #222; }
+
+        .desc-box {
+            line-height: 1.8;
+            color: #444;
+            font-size: 1.05rem;
+            margin-bottom: 2rem;
+        }
+
+        /* --- 无线电波表格 (修正版) --- */
+        .radio-table-container {
+            margin-top: 1.5rem;
+            overflow-x: auto;
+            display: none; 
+        }
+
+        .radio-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+            margin-top: 0.5rem;
+            border: 2px solid #aaa;
+        }
+
+        .radio-table th, .radio-table td {
+            border: 1px solid #ccc;
+            padding: 12px 10px;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .radio-table th {
+            background-color: #eef2f7;
+            color: #333;
+            font-weight: bold;
+        }
+
+        .radio-table tr:hover { background-color: #f0f7ff; }
+
+        /* 特殊列样式 */
+        .col-usage { text-align: left !important; padding-left: 15px !important; }
+        .sub-cat { font-weight: bold; color: #555; font-size: 0.9em; background-color: #fafafa;}
+        .main-cat { font-weight: bold; color: #d32f2f; font-size: 1.1em; background-color: #fff; }
+
+    </style>
+</head>
+<body>
+
+    <h1>电磁波谱</h1>
+    <p class="subtitle">数据来源：教材《电磁场与电磁波》表 3.8.1 及相关章节</p>
+
+    <div class="spectrum-container">
+        <div class="spectrum-bar">
+            <div class="interactive-layer">
+                <button class="wave-btn" data-type="radio" onclick="updateView('radio')">
+                    <span class="btn-name">无线电波</span>
+                    <span class="btn-range">几千米~几毫米</span>
+                </button>
+                <button class="wave-btn" data-type="ir" onclick="updateView('ir')">
+                    <span class="btn-name">红外线</span>
+                    <span class="btn-range">0.76~600\(\mu m\)</span>
+                </button>
+                <button class="wave-btn" data-type="visible" onclick="updateView('visible')">
+                    <span class="btn-name">可见光</span>
+                    <span class="btn-range">0.4~0.7\(\mu m\)</span>
+                </button>
+                <button class="wave-btn" data-type="uv" onclick="updateView('uv')">
+                    <span class="btn-name">紫外线</span>
+                    <span class="btn-range">5nm~0.4\(\mu m\)</span>
+                </button>
+                <button class="wave-btn" data-type="xray" onclick="updateView('xray')">
+                    <span class="btn-name">X射线</span>
+                    <span class="btn-range">\(10^{-8}\)~\(10^{-12}\)m</span>
+                </button>
+                <button class="wave-btn" data-type="gamma" onclick="updateView('gamma')">
+                    <span class="btn-name">\(\gamma\)射线</span>
+                    <span class="btn-range">&lt; \(10^{-10}\)m</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="info-card" id="infoCard">
+        <div class="info-header">
+            <h2 class="info-title" id="title">请选择波段</h2>
+        </div>
+
+        <div class="main-data-grid">
+            <div class="data-box">
+                <span class="data-label">波长范围 (\(\lambda\))</span>
+                <span class="data-value" id="wavelength">-</span>
+            </div>
+            <div class="data-box">
+                <span class="data-label">特性/备注</span>
+                <span class="data-value" id="features">-</span>
+            </div>
+        </div>
+
+        <div class="desc-box" id="description">
+            点击上方图表中的不同区域，查看该波段在教材中的详细定义和应用。
+        </div>
+
+        <div class="radio-table-container" id="radioTable">
+            <h3 style="border-left:4px solid #d32f2f; padding-left:10px; margin-bottom:10px;">表 3.8.1 各种无线电波的范围和用途</h3>
+            <table class="radio-table">
+                <thead>
+                    <tr>
+                        <th colspan="2" width="20%">名称</th> <th width="20%">波长</th>
+                        <th width="20%">频率</th>
+                        <th>主要用途</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="2" class="main-cat">长波</td>
+                        <td>30000~3000 m</td>
+                        <td>10~100 kHz</td>
+                        <td class="col-usage">长距离通讯和导航</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="main-cat">中波</td>
+                        <td>3000~200 m</td>
+                        <td>100~1500 kHz</td>
+                        <td class="col-usage">无线电广播</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="main-cat">中短波</td>
+                        <td>200~50 m</td>
+                        <td>1.5~6 MHz</td>
+                        <td class="col-usage">电报通讯、无线电广播</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="main-cat">短波</td>
+                        <td>50~10 m</td>
+                        <td>6~30 MHz</td>
+                        <td class="col-usage">无线电广播、电报通讯</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="main-cat">米波</td>
+                        <td>10~1 m</td>
+                        <td>30~300 MHz</td>
+                        <td class="col-usage">调频无线电广播、电视广播、无线电导航</td>
+                    </tr>
+                    
+                    <tr style="border-top: 2px solid #ccc;">
+                        <td rowspan="3" class="main-cat" style="background:#fff;">微波</td>
+                        <td class="sub-cat">分米波</td>
+                        <td>1 m ~ 10 cm</td>
+                        <td>300~3000 MHz</td>
+                        <td rowspan="3" class="col-usage" style="vertical-align: middle;">电视、雷达、无线电导航及其专门用途</td>
+                    </tr>
+                    <tr>
+                        <td class="sub-cat">厘米波</td>
+                        <td>10 ~ 1 cm</td>
+                        <td>3000~30000 MHz</td>
+                    </tr>
+                    <tr>
+                        <td class="sub-cat">毫米波</td>
+                        <td>1 cm ~ 1 mm</td>
+                        <td>30000~300000 MHz</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const textbookData = {
+            radio: {
+                title: "无线电波",
+                wave: "几千米 ~ 几毫米",
+                features: "需通过天线发射",
+                desc: "由电磁振荡电路通过天线发射。其范围很广，根据波长不同有不同的传播特性和用途（见下表）。",
+                showTable: true 
+            },
+            ir: {
+                title: "红外线",
+                wave: "0.76 ~ 600 \(\\mu m\)",
+                features: "显著的热效应",
+                desc: "由炽热的物体、气体放电或其他光源激发分子或原子产生。红外线能透过浓雾或较厚的气层而不易被吸收。应用：工业、医疗、资源勘探、气象监测以及军事等领域。",
+                showTable: false
+            },
+            visible: {
+                title: "可见光 (光波)",
+                wave: "0.4 ~ 0.7 \(\\mu m\)",
+                features: "引起视觉感光",
+                desc: "在电磁波谱中，只有这部分能使人的眼睛产生感光作用。产生方式与红外线相同。不同颜色的光实际上是不同波长的电磁波，白光则是多种色光的混合。",
+                showTable: false
+            },
+            uv: {
+                title: "紫外线",
+                wave: "5.0\\(\\times\\)10\\(^{-9}\\)m ~ 0.4 \(\\mu m\)",
+                features: "生理作用 / 化学作用",
+                desc: "具有显著的生理作用，灭菌杀虫能力较强，还会引起强烈的化学作用（如使照相底片感光）。",
+                showTable: false
+            },
+            xray: {
+                title: "X 射线 (伦琴射线)",
+                wave: "10\\(^{-8}\\) ~ 10\\(^{-12}\\) m",
+                features: "能量大 / 穿透力强",
+                desc: "由高速电子流轰击原子中的内层电子而产生。利用其穿透力强的特点，在医疗中进行透视、拍片，在工业中进行探伤、检测。",
+                showTable: false
+            },
+            gamma: {
+                title: "\\(\\gamma\\) 射线",
+                wave: "< 10\\(^{-10}\\) m",
+                features: "比X射线波长更短",
+                desc: "放射性原子衰变时发出的电磁辐射，或高能粒子与原子核碰撞产生。具有能量大、穿透力强等特点，是研究物质微观结构的有力武器。医疗上用于“\\(\\gamma\\)刀”治疗癌症。",
+                showTable: false
+            }
+        };
+
+        function updateView(type) {
+            const data = textbookData[type];
+            if (!data) return;
+
+            // 1. 填充基础数据
+            document.getElementById('title').innerHTML = data.title;
+            document.getElementById('wavelength').innerHTML = data.wave;
+            document.getElementById('features').innerHTML = data.features;
+            document.getElementById('description').innerHTML = data.desc;
+
+            // 2. 按钮状态切换
+            document.querySelectorAll('.wave-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.wave-btn[data-type="${type}"]`).classList.add('active');
+
+            // 3. 无线电波表格控制
+            const tableContainer = document.getElementById('radioTable');
+            if (data.showTable) {
+                tableContainer.style.display = 'block';
+                setTimeout(() => {
+                    tableContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 100);
+            } else {
+                tableContainer.style.display = 'none';
+            }
+
+            // 4. 重新渲染公式
+            if (window.MathJax) {
+                MathJax.typesetPromise();
+            }
+        }
+
+        updateView('radio');
+    </script>
+</body>
+</html>

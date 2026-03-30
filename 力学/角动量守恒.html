@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>质点系角动量守恒 (有心力与力矩分析版)</title>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" 
+        onload="renderMathInElement(document.body, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false}
+            ]
+        });"></script>
+
+    <style>
+        :root {
+            --bg-color: #1a1a24;
+            --panel-bg: #262633;
+            --text-main: #eaeaea;
+            --c-r: #FFD166; /* 矢径 r 黄色 */
+            --c-v: #06D6A0; /* 速度 v 绿色 */
+            --c-f: #EF476F; /* 有心力 F 红色 */
+            --c-m: #F5A623; /* 力矩 M 橙色 */
+            --c-l: #118AB2; /* 角动量 L 蓝色 */
+            --c-p1: #FF9A9E; /* 质点1颜色 */
+            --c-p2: #A18CD1; /* 质点2颜色 */
+        }
+
+        body {
+            margin: 0; padding: 20px;
+            background-color: var(--bg-color); color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex; flex-direction: column; align-items: center;
+        }
+
+        h1 {
+            font-weight: 300; border-bottom: 2px solid #555;
+            padding-bottom: 15px; margin-bottom: 30px; letter-spacing: 1px;
+        }
+
+        .container {
+            display: flex; flex-wrap: wrap; justify-content: center; gap: 40px;
+            max-width: 1400px; width: 100%;
+        }
+
+        .canvas-wrapper { display: flex; flex-direction: column; align-items: center; }
+
+        #canvas-container {
+            background: radial-gradient(circle at center, #222, #0a0a0a);
+            border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            border: 1px solid #333; overflow: hidden;
+        }
+
+        canvas { display: block; }
+
+        .btn-toggle {
+            margin-top: 25px; padding: 12px 28px; font-size: 1.1em;
+            background-color: #4CAF50; color: white; border: none;
+            border-radius: 6px; cursor: pointer; transition: all 0.2s;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .btn-toggle:hover { background-color: #45a049; }
+        .btn-toggle.active { background-color: #d35400; }
+
+        .panel {
+            flex: 1; min-width: 350px; max-width: 500px;
+            background: var(--panel-bg); padding: 30px; border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+
+        .section-title {
+            color: #999; font-size: 0.9em; text-transform: uppercase;
+            margin-bottom: 15px; border-left: 4px solid #4CAF50; padding-left: 10px;
+        }
+
+        .control-group { margin-bottom: 30px; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;}
+        .control-group label { display: block; margin-bottom: 10px; font-size: 1.05em; color: #FFD166;}
+        input[type=range] { width: 100%; cursor: pointer; accent-color: #FFD166; }
+
+        .math-box {
+            background: #111; padding: 20px; border-radius: 8px;
+            border: 1px solid #444; font-size: 1.1em; margin-bottom: 20px;
+        }
+
+        .calc-row { display: flex; justify-content: space-between; margin-bottom: 12px; }
+        .total-row {
+            border-top: 2px dashed #666; padding-top: 15px; margin-top: 15px;
+            font-size: 1.4em; font-weight: bold; color: var(--c-l); text-align: center;
+        }
+
+        .explanation {
+            background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;
+            font-size: 0.95em; line-height: 1.6; color: #ccc;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>角动量守恒与有心力 ($\boldsymbol{M} = 0 \Rightarrow \boldsymbol{L} = \text{常数}$)</h1>
+
+    <div class="container">
+        
+        <div class="canvas-wrapper">
+            <div id="canvas-container">
+                <canvas id="simCanvas" width="650" height="650"></canvas>
+            </div>
+            
+            <button id="toggleVectors" class="btn-toggle">
+                <span id="btnIcon">👁️</span> <span id="btnText">显示物理矢量 (r, v, F, M)</span>
+            </button>
+        </div>
+
+        <div class="panel">
+            <div class="section-title">交互：改变系统内力做功</div>
+            <div class="control-group">
+                <label>收缩或伸展绳子 (改变半径 $r$)：<span id="ui-r" style="color:white">2.0</span> m</label>
+                <input type="range" id="radiusSlider" min="50" max="220" value="200" step="1">
+                <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #888; margin-top:5px;">
+                    <span>拉紧 (做正功, 加速)</span>
+                    <span>松开 (做负功, 减速)</span>
+                </div>
+            </div>
+
+            <div class="section-title">系统角动量状态</div>
+            <div class="math-box">
+                <div class="calc-row" style="color: var(--c-p1)">
+                    <span>质点1: $L_1 = r_1 m v_1$</span>
+                    <span id="calc-l1">+ 10.0</span>
+                </div>
+                <div class="calc-row" style="color: var(--c-p2)">
+                    <span>质点2: $L_2 = r_2 m v_2$</span>
+                    <span id="calc-l2">+ 10.0</span>
+                </div>
+                <div class="total-row">
+                    $L_{\text{总}} = \sum_{i=1}^{2} L_i = $ <span id="calc-total">20.0</span> (恒定)
+                </div>
+            </div>
+
+            <div class="section-title">理论分析 (参考教材 §4-3)</div>
+            <div class="explanation">
+                <p><strong>为什么角动量会守恒？</strong></p>
+                <p>开启矢量显示后，您会看到红色的<strong>拉力 $\boldsymbol{F}$</strong> 始终指向圆心 $O$（即有心力）。由于力 $\boldsymbol{F}$ 的作用线始终通过参考点 $O$，它与矢径 $\boldsymbol{r}$ 的夹角始终为 $180^\circ$。</p>
+                <p>根据力矩的定义：</p>
+                <div style="text-align:center; font-size:1.1em; color:var(--c-m); margin: 10px 0;">
+                    $\boldsymbol{M} = \boldsymbol{r} \times \boldsymbol{F} = 0$
+                </div>
+                <p>因为外力矩之和 $\Sigma \boldsymbol{M}_{\text{外}} = 0$，根据角动量定理，系统的总角动量 $L_{\text{总}}$ 必然保持守恒。</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const radiusSlider = document.getElementById('radiusSlider');
+        const toggleBtn = document.getElementById('toggleVectors');
+        const btnIcon = document.getElementById('btnIcon');
+        const btnText = document.getElementById('btnText');
+
+        const uiR = document.getElementById('ui-r');
+        const calcL1 = document.getElementById('calc-l1');
+        const calcL2 = document.getElementById('calc-l2');
+        const calcTotal = document.getElementById('calc-total');
+
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        
+        const mass = 1.0; 
+        const initialR = 200; 
+        const initialW = 0.01; 
+        
+        // 核心守恒量 L
+        const L_EACH = mass * initialR * initialR * initialW; 
+
+        let currentR = parseInt(radiusSlider.value);
+        let angle = 0;
+        let showVectors = false;
+
+        const colors = {
+            r: '#FFD166', v: '#06D6A0', F: '#EF476F', M: '#F5A623',
+            p1: '#FF9A9E', p2: '#A18CD1'
+        };
+
+        toggleBtn.addEventListener('click', () => {
+            showVectors = !showVectors;
+            toggleBtn.classList.toggle('active');
+            btnIcon.innerText = showVectors ? '🚫' : '👁️';
+            btnText.innerText = showVectors ? '隐藏物理矢量' : '显示物理矢量 (r, v, F, M)';
+        });
+
+        // 绘制矢量箭头
+        function drawVector(x, y, vx, vy, color, label, lineWidth=3, labelOffsetMultiplier=1) {
+            const headlen = 18; 
+            const endX = x + vx; const endY = y + vy;
+            const theta = Math.atan2(vy, vx);
+
+            ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(endX, endY);
+            ctx.strokeStyle = color; ctx.lineWidth = lineWidth; ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(endX - headlen * Math.cos(theta - Math.PI / 6), endY - headlen * Math.sin(theta - Math.PI / 6));
+            ctx.lineTo(endX - headlen * Math.cos(theta + Math.PI / 6), endY - headlen * Math.sin(theta + Math.PI / 6));
+            ctx.lineTo(endX, endY);
+            ctx.fillStyle = color; ctx.fill();
+
+            if(label) {
+                ctx.fillStyle = color; 
+                ctx.font = "italic bold 24px 'Times New Roman'";
+                let textOffsetX = 20 * Math.cos(theta) * labelOffsetMultiplier;
+                let textOffsetY = 20 * Math.sin(theta) * labelOffsetMultiplier;
+                
+                if (Math.cos(theta) < 0) textOffsetX -= 25; 
+                if (Math.sin(theta) > 0) textOffsetY += 20;
+                else textOffsetY -= 5;
+
+                ctx.fillText(label, endX + textOffsetX, endY + textOffsetY);
+            }
+        }
+
+        function drawSystem() {
+            // 背景与拖尾
+            ctx.fillStyle = 'rgba(20, 20, 20, 0.25)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            currentR = parseInt(radiusSlider.value);
+            let currentW = L_EACH / (mass * currentR * currentR);
+            angle -= currentW; 
+            
+            // 速度的视觉长度
+            let visualV = (currentW * currentR) * 30; 
+            // 力的视觉长度 (为了美观固定一个长度，表示方向即可)
+            let visualF = 80;
+
+            ctx.beginPath(); ctx.arc(cx, cy, currentR, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#444'; ctx.setLineDash([4, 6]); ctx.stroke(); ctx.setLineDash([]);
+
+            let p1x = cx + currentR * Math.cos(angle);
+            let p1y = cy + currentR * Math.sin(angle);
+            let p2x = cx + currentR * Math.cos(angle + Math.PI); 
+            let p2y = cy + currentR * Math.sin(angle + Math.PI);
+
+            ctx.beginPath(); ctx.moveTo(p1x, p1y); ctx.lineTo(p2x, p2y);
+            ctx.strokeStyle = '#777'; ctx.lineWidth = 3; ctx.stroke();
+
+            ctx.beginPath(); ctx.arc(cx, cy, 6, 0, 2*Math.PI); ctx.fillStyle = '#fff'; ctx.fill();
+            ctx.font = "italic 20px 'Times New Roman'";
+            ctx.fillText("O", cx-20, cy+25);
+
+            if (showVectors) {
+                // --- 质点 1 ---
+                let vAngle1 = angle - Math.PI/2;
+                // r 矢径 (从圆心指向质点)
+                drawVector(cx, cy, (currentR-15)*Math.cos(angle), (currentR-15)*Math.sin(angle), colors.r, "r₁", 3);
+                // v 速度 (切线方向)
+                drawVector(p1x, p1y, visualV*Math.cos(vAngle1), visualV*Math.sin(vAngle1), colors.v, "v₁", 4);
+                // F 拉力 (从质点指向圆心, 角度相差 180 度)
+                drawVector(p1x, p1y, visualF*Math.cos(angle + Math.PI), visualF*Math.sin(angle + Math.PI), colors.F, "F₁", 5);
+
+                // --- 质点 2 ---
+                let vAngle2 = (angle + Math.PI) - Math.PI/2;
+                // r 矢径
+                drawVector(cx, cy, (currentR-15)*Math.cos(angle+Math.PI), (currentR-15)*Math.sin(angle+Math.PI), colors.r, "r₂", 3);
+                // v 速度
+                drawVector(p2x, p2y, visualV*Math.cos(vAngle2), visualV*Math.sin(vAngle2), colors.v, "v₂", 4);
+                // F 拉力
+                drawVector(p2x, p2y, visualF*Math.cos(angle), visualF*Math.sin(angle), colors.F, "F₂", 5);
+
+                // 核心知识点展示：力矩 M = 0
+                ctx.fillStyle = colors.M;
+                ctx.font = "bold 22px 'Times New Roman'";
+                // 动态放置在质点旁边，不遮挡箭头
+                ctx.fillText("M₁ = 0", p1x + 30 * Math.cos(vAngle1), p1y + 30 * Math.sin(vAngle1));
+                ctx.fillText("M₂ = 0", p2x + 30 * Math.cos(vAngle2), p2y + 30 * Math.sin(vAngle2));
+            }
+
+            // 画质点实体
+            ctx.beginPath(); ctx.arc(p1x, p1y, 14, 0, 2*Math.PI); ctx.fillStyle = colors.p1; ctx.fill();
+            ctx.beginPath(); ctx.arc(p2x, p2y, 14, 0, 2*Math.PI); ctx.fillStyle = colors.p2; ctx.fill();
+
+            // 更新数据面板
+            uiR.innerText = (currentR / 100).toFixed(2); 
+            let displayL = L_EACH / 40; 
+            calcL1.innerText = "+ " + displayL.toFixed(1);
+            calcL2.innerText = "+ " + displayL.toFixed(1);
+            calcTotal.innerText = (displayL * 2).toFixed(1);
+        }
+
+        function animate() {
+            drawSystem();
+            requestAnimationFrame(animate);
+        }
+
+        animate(); 
+    </script>
+</body>
+</html>

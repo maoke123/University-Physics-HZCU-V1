@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>无限大平板叠加原理</title>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$']]
+            },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            background: white;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            width: 950px;
+            max-width: 98vw;
+        }
+
+        /* 理论公式区 */
+        .theory-box {
+            background: #e3f2fd;
+            border-left: 5px solid #2196f3;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .theory-text { font-size: 0.95em; color: #0d47a1; }
+
+        /* 画布 */
+        .canvas-wrapper {
+            position: relative;
+            margin: 20px 0;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+            overflow: hidden;
+        }
+        canvas { display: block; width: 100%; cursor: crosshair; }
+
+        /* 控制台 */
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            gap: 40px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #eee;
+        }
+
+        .control-group { flex: 1; }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        /* 自定义滑块样式 */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            cursor: pointer;
+            margin-top: -8px;
+            border: 2px solid #666;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #ddd;
+            border-radius: 2px;
+        }
+        
+        /* 针对不同板子的滑块颜色 */
+        #rangeA::-webkit-slider-thumb { border-color: #e53935; }
+        #rangeA::-webkit-slider-runnable-track { background: linear-gradient(to right, #ffcdd2, #e53935); }
+        
+        #rangeB::-webkit-slider-thumb { border-color: #1e88e5; }
+        #rangeB::-webkit-slider-runnable-track { background: linear-gradient(to right, #bbdefb, #1e88e5); }
+
+        /* 动态公式区 */
+        .math-panel {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .math-card {
+            flex: 1;
+            background: #f9f9f9;
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid #eee;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .math-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .math-card h4 { margin: 0 0 10px 0; color: #666; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* 图例 */
+        .legend { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; font-size: 0.9em; color: #555; }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="text-align:center; margin-top:0;">平板电场叠加 (高精度演示)</h2>
+
+    <div class="theory-box">
+        <div class="theory-text">
+            <strong>核心公式：</strong> 无限大均匀带电平板产生的场强是匀强电场，大小只与电荷密度 $\sigma$ 有关，与距离无关。
+        </div>
+        <div style="font-size: 1.3em;">
+            $$ E = \frac{\sigma}{2\epsilon_0} $$
+        </div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:rgba(229, 57, 53, 0.6)"></div> 板 A 分量 ($E_A$)</div>
+        <div class="legend-item"><div class="dot" style="background:rgba(30, 136, 229, 0.6)"></div> 板 B 分量 ($E_B$)</div>
+        <div class="legend-item"><div class="dot" style="background:#222"></div> 矢量和 ($E_{net}$)</div>
+    </div>
+
+    <div class="canvas-wrapper">
+        <canvas id="fieldCanvas" width="900" height="380"></canvas>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <div class="slider-header" style="color:#c62828;">
+                <span>板 A 电荷密度 ($\sigma_A$)</span>
+                <span id="valA-display">0.0</span>
+            </div>
+            <input type="range" id="rangeA" min="-5" max="5" step="0.1" value="2.0">
+        </div>
+        <div class="control-group">
+            <div class="slider-header" style="color:#1565c0;">
+                <span>板 B 电荷密度 ($\sigma_B$)</span>
+                <span id="valB-display">0.0</span>
+            </div>
+            <input type="range" id="rangeB" min="-5" max="5" step="0.1" value="-2.0">
+        </div>
+    </div>
+
+    <div class="math-panel">
+        <div class="math-card">
+            <h4>区域 I (左侧)</h4>
+            <div id="math-1" style="font-size: 1.1em; color:#444;">计算中...</div>
+        </div>
+        <div class="math-card" style="border-top: 4px solid #4caf50;">
+            <h4>区域 II (中间)</h4>
+            <div id="math-2" style="font-size: 1.1em; color:#444;">计算中...</div>
+        </div>
+        <div class="math-card">
+            <h4>区域 III (右侧)</h4>
+            <div id="math-3" style="font-size: 1.1em; color:#444;">计算中...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('fieldCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 布局常量
+    const plateA_X = 300;
+    const plateB_X = 600;
+    const arrowSpacingX = 80;
+    const arrowSpacingY = 55;
+
+    // 状态
+    let sigmaA = 2.0;
+    let sigmaB = -2.0;
+
+    // 缩放系数：控制箭头长度，使其在sigma=5时不过长
+    const ARROW_SCALE = 12; 
+
+    // DOM 引用
+    const rangeA = document.getElementById('rangeA');
+    const rangeB = document.getElementById('rangeB');
+    const displayA = document.getElementById('valA-display');
+    const displayB = document.getElementById('valB-display');
+
+    // 核心：平滑更新函数
+    function updateSystem() {
+        // 1. 获取高精度数值 (Float)
+        sigmaA = parseFloat(rangeA.value);
+        sigmaB = parseFloat(rangeB.value);
+
+        // 2. 更新文本显示
+        displayA.innerText = (sigmaA > 0 ? "+" : "") + sigmaA.toFixed(1) + " σ₀";
+        displayB.innerText = (sigmaB > 0 ? "+" : "") + sigmaB.toFixed(1) + " σ₀";
+
+        // 3. 重绘 Canvas (无延迟)
+        drawScene();
+
+        // 4. 更新公式 (防抖动或直接更新)
+        updateMathText();
+    }
+
+    rangeA.addEventListener('input', updateSystem);
+    rangeB.addEventListener('input', updateSystem);
+
+    function drawArrow(x, y, vectorVal, color, lineWidth, isNet=false) {
+        if (Math.abs(vectorVal) < 0.05) {
+            // 如果是非常小的值（接近0），画一个小圆点表示
+            if(isNet && Math.abs(vectorVal) < 0.05) {
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI*2);
+                ctx.fillStyle = "#ccc";
+                ctx.fill();
+            }
+            return; 
+        }
+
+        const len = vectorVal * ARROW_SCALE;
+        const headLen = 6;
+        const angle = len > 0 ? 0 : Math.PI;
+        const absLen = Math.abs(len);
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.fillStyle = color;
+
+        // 画线
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(len, 0);
+        ctx.stroke();
+
+        // 画箭头 (根据方向旋转)
+        ctx.translate(len, 0);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-headLen, -headLen/2);
+        ctx.lineTo(-headLen, headLen/2);
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    function drawPlate(x, sigma, label) {
+        // 极板主体
+        ctx.fillStyle = sigma > 0 ? "rgba(255, 205, 210, 0.5)" : (sigma < 0 ? "rgba(187, 222, 251, 0.5)" : "#f5f5f5");
+        ctx.strokeStyle = sigma > 0 ? "#e53935" : (sigma < 0 ? "#1e88e5" : "#999");
+        
+        // 极板根据电荷密度稍微改变透明度或深浅? 这里保持简单
+        ctx.lineWidth = 3;
+        ctx.fillRect(x - 8, 30, 16, 320);
+        ctx.strokeRect(x - 8, 30, 16, 320);
+
+        // 极板文字
+        ctx.fillStyle = "#333";
+        ctx.font = "bold 14px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(label, x, 370);
+
+        // 电荷符号
+        const symbol = sigma > 0 ? "+" : (sigma < 0 ? "-" : "");
+        if(symbol && Math.abs(sigma) > 0.1) {
+            ctx.fillStyle = sigma > 0 ? "#b71c1c" : "#0d47a1";
+            ctx.font = "14px Arial";
+            // 密度越高符号越多？简单起见，画固定的
+            for(let py=50; py<340; py+=30) {
+                ctx.fillText(symbol, x, py);
+            }
+        }
+    }
+
+    function drawScene() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 绘制两块板
+        drawPlate(plateA_X, sigmaA, "板 A");
+        drawPlate(plateB_X, sigmaB, "板 B");
+
+        // 遍历网格点绘制场
+        for (let y = 60; y < 330; y += arrowSpacingY) {
+            for (let x = 60; x < 850; x += arrowSpacingX) {
+                // 避开板子位置
+                if (Math.abs(x - plateA_X) < 20 || Math.abs(x - plateB_X) < 20) continue;
+
+                // 物理计算：假设 E0 = 1 对应 sigma = 2epsilon0
+                // 场强方向：正离，负向
+                
+                // Plate A 场强 (只与方向有关，大小恒定为 sigmaA的一半)
+                // 系数 0.5 是因为 E = sigma / 2epsilon
+                let dirA = (x > plateA_X) ? 1 : -1;
+                let Ea = sigmaA * 0.5 * dirA;
+
+                // Plate B 场强
+                let dirB = (x > plateB_X) ? 1 : -1;
+                let Eb = sigmaB * 0.5 * dirB;
+
+                let Enet = Ea + Eb;
+
+                // 1. 画分量 A (红色，偏移 -8px)
+                drawArrow(x, y - 8, Ea, "rgba(229, 57, 53, 0.4)", 2);
+                
+                // 2. 画分量 B (蓝色，偏移 +8px)
+                drawArrow(x, y + 8, Eb, "rgba(30, 136, 229, 0.4)", 2);
+
+                // 3. 画合矢量 (黑色，居中，最上层)
+                drawArrow(x, y, Enet, "#222", 3.5, true);
+            }
+        }
+        
+        // 区域标识
+        ctx.font = "bold 40px Arial";
+        ctx.fillStyle = "rgba(0,0,0,0.05)";
+        ctx.textAlign = "center";
+        ctx.fillText("I", 150, 200);
+        ctx.fillText("II", 450, 200);
+        ctx.fillText("III", 750, 200);
+    }
+
+    // 简单的 MathJax 队列管理，防止高频更新卡顿
+    let mathUpdateTimer = null;
+    
+    function updateMathText() {
+        // 取消上一次未执行的更新
+        if(mathUpdateTimer) clearTimeout(mathUpdateTimer);
+
+        // 延迟 50ms 更新文字，保证 UI 线程流畅
+        mathUpdateTimer = setTimeout(() => {
+            const formatE = (val) => {
+                if (Math.abs(val) < 0.05) return "0";
+                const num = Math.abs(val).toFixed(2);
+                const arrow = val > 0 ? "\\rightarrow" : "\\leftarrow";
+                return `\\mathbf{${num} E_0} \\; (${arrow})`;
+            };
+
+            // 计算三个区域的合场强数值 (注意：这里是标量代数和)
+            // 区域 I (x < A): A场向左(-), B场向左(-) (假设均为正电荷)
+            // 实际逻辑: 
+            // I:  -sigmaA/2 - sigmaB/2
+            // II: +sigmaA/2 - sigmaB/2
+            // III:+sigmaA/2 + sigmaB/2
+            
+            // 为了显示，我们需要计算数值
+            let net1 = (-sigmaA - sigmaB) / 2;
+            let net2 = ( sigmaA - sigmaB) / 2;
+            let net3 = ( sigmaA + sigmaB) / 2;
+
+            // 构建简单的 HTML 字符串而不是让 MathJax 重新渲染整个大块
+            // 这样更快
+            const tpl = (val) => `$$ E_{net} = ${formatE(val)} $$`;
+
+            document.getElementById('math-1').innerHTML = tpl(net1);
+            document.getElementById('math-2').innerHTML = tpl(net2);
+            document.getElementById('math-3').innerHTML = tpl(net3);
+
+            // 通知 MathJax 渲染新插入的内容
+            MathJax.typesetPromise([
+                document.getElementById('math-1'),
+                document.getElementById('math-2'),
+                document.getElementById('math-3')
+            ]);
+        }, 50);
+    }
+
+    // 初始化
+    updateSystem();
+
+</script>
+</body>
+</html>

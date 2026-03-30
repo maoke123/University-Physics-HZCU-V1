@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>圆周运动物理矢量分析 - 纯净演示版</title>
+    <style>
+        body { display: flex; flex-direction: column; align-items: center; background-color: #f8f9fa; font-family: 'PingFang SC', sans-serif; margin: 0; padding: 20px; color: #333; }
+        canvas { background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 12px; }
+        .data-panel { position: absolute; top: 40px; left: 40px; background: rgba(255,255,255,0.9); padding: 15px; border-left: 5px solid #333; box-shadow: 0 4px 6px rgba(0,0,0,0.05); pointer-events: none; }
+        .controls { margin-top: 25px; display: flex; gap: 50px; padding: 20px; background: white; border-radius: 10px; }
+        .slider-box { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        input[type=range] { width: 180px; }
+        .v-color { color: #27ae60; font-weight: bold; }
+        .ar-color { color: #e74c3c; font-weight: bold; }
+        .at-color { color: #f39c12; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="data-panel">
+        <div class="v-color">线速度 v: <span id="vReal">0.0</span> px/s</div>
+        <div class="ar-color">径向加速度 aᵣ: <span id="arReal">0.0</span> px/s²</div>
+        <div class="at-color">切向加速度 aₜ: <span id="atReal">0.0</span> px/s²</div>
+    </div>
+
+    <canvas id="physicsCanvas" width="800" height="500"></canvas>
+
+    <div class="controls">
+        <div class="slider-box">
+            <label>调节目标速度 (v)</label>
+            <input type="range" id="vSlider" min="0" max="60" value="30">
+        </div>
+        <div class="slider-box">
+            <label>调节轨道半径 (r)</label>
+            <input type="range" id="rSlider" min="80" max="200" value="140">
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('physicsCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    let angle = 0;
+    let currentV = 30;
+    let at = 0;
+
+    const vSlider = document.getElementById('vSlider');
+    const rSlider = document.getElementById('rSlider');
+
+    function drawArrow(x, y, rad, len, color, label) {
+        if (Math.abs(len) < 2) return;
+        const head = 8;
+        const targetX = x + len * Math.cos(rad);
+        const targetY = y + len * Math.sin(rad);
+
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = 3;
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(targetX, targetY);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(targetX, targetY);
+        ctx.lineTo(targetX - head * Math.cos(rad - Math.PI/6), targetY - head * Math.sin(rad - Math.PI/6));
+        ctx.lineTo(targetX - head * Math.cos(rad + Math.PI/6), targetY - head * Math.sin(rad + Math.PI/6));
+        ctx.fill();
+
+        // 仅在箭头末端标出符号名称
+        ctx.font = "italic bold 16px serif";
+        ctx.fillText(label, targetX + 5, targetY + 5);
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const r = parseInt(rSlider.value);
+        const targetV = parseFloat(vSlider.value);
+
+        // 1. 物理模拟 (超低速系数 0.008)
+        const easing = 0.03; 
+        at = (targetV - currentV) * 0.5; // 计算切向加速度感官量
+        currentV += (targetV - currentV) * easing;
+        
+        const omega = currentV / r;
+        angle += omega * 0.3; // 视觉减速系数
+
+        const bx = cx + r * Math.cos(angle);
+        const by = cy + r * Math.sin(angle);
+
+        // 2. 绘制圆周轨道
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI*2);
+        ctx.strokeStyle = '#eee';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // 3. 在小球上标注矢量方向
+        const vDir = angle + Math.PI/2;
+        const arDir = angle + Math.PI;
+        const atDir = at >= 0 ? vDir : vDir + Math.PI;
+
+        // 速度方向 v (绿)
+        drawArrow(bx, by, vDir, 60, '#27ae60', 'v');
+        // 径向加速度 a_r (红)
+        const arMag = (currentV * currentV) / r;
+        drawArrow(bx, by, arDir, Math.min(arMag * 8, 100), '#e74c3c', 'aᵣ');
+        // 切向加速度 a_t (黄)
+        drawArrow(bx, by, atDir, Math.abs(at) * 15, '#f39c12', 'aₜ');
+
+        // 4. 绘制小球主体
+        ctx.beginPath();
+        ctx.arc(bx, by, 15, 0, Math.PI*2);
+        ctx.fillStyle = '#2c3e50';
+        ctx.fill();
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // 5. 更新左上角数据面板
+        document.getElementById('vReal').innerText = currentV.toFixed(2);
+        document.getElementById('arReal').innerText = arMag.toFixed(2);
+        document.getElementById('atReal').innerText = at.toFixed(2);
+
+        requestAnimationFrame(animate);
+    }
+
+    animate();
+</script>
+</body>
+</html>

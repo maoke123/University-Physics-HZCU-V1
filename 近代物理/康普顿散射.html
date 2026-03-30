@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>康普顿散射角关系演示 (LaTeX支持)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background: #2a2a2a;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-width: 900px;
+            width: 100%;
+        }
+        h2 { color: #66ccff; margin-bottom: 10px; }
+        .equation {
+            /* MathJax 会渲染公式，这里只需保持中心对齐 */
+            font-size: 1.2em;
+            text-align: center;
+            margin: 15px 0;
+            color: #ffcc00;
+        }
+        .main-content {
+            display: flex;
+            gap: 30px;
+        }
+        .controls {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .control-group {
+            background: #3a3a3a;
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #4a90e2;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #c0c0c0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        input[type=range] { width: 100%; margin-top: 5px; cursor: pointer; }
+        .result-panel {
+            width: 100%;
+            background: #222;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+        }
+        .result-panel div { margin: 5px 0; }
+        .result-value { color: #00ffcc; font-weight: bold; }
+
+        /* Canvas Area for Diagram */
+        #diagramCanvas {
+            border: 1px solid #444;
+            background: #111;
+            border-radius: 8px;
+        }
+    </style>
+    
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: {
+                fontCache: 'global'
+            }
+        };
+    </script>
+</head>
+<body>
+
+    <h2>康普顿散射和散射角度的关系</h2>
+    
+    <div class="container">
+        <div class="equation">
+            $$\Delta \lambda = \lambda' - \lambda_0 = \frac{h}{m_e c} (1 - \cos \phi)$$
+        </div>
+
+        <div class="main-content">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="scatterAngle">散射角 ($\phi$): <span id="angleVal">90.0°</span></label>
+                    <input type="range" id="scatterAngle" min="0" max="180" value="90" step="0.1">
+                </div>
+
+                <div class="control-group">
+                    <label for="initialWavelength">入射波长 ($\lambda_0$): <span id="initialWlVal">0.050 nm</span></label>
+                    <input type="range" id="initialWavelength" min="0.01" max="0.2" value="0.05" step="0.001">
+                </div>
+
+                <div class="result-panel">
+                    <h3>计算结果 (pm)</h3>
+                    <div>康普顿波长 ($\lambda_C = \frac{h}{m_e c}$): <span id="comptonWl" class="result-value">2.43 pm</span></div>
+                    <div>波长移动量 ($\Delta \lambda$): <span id="deltaWl" class="result-value">0.00 pm</span></div>
+                    <div>散射后波长 ($\lambda'$): <span id="finalWl" class="result-value">0.000 nm</span></div>
+                </div>
+            </div>
+
+            <canvas id="diagramCanvas" width="550" height="350"></canvas>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('diagramCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // UI 元素
+    const angleSlider = document.getElementById('scatterAngle');
+    const wlSlider = document.getElementById('initialWavelength');
+    const angleValSpan = document.getElementById('angleVal');
+    const initialWlValSpan = document.getElementById('initialWlVal');
+    const deltaWlSpan = document.getElementById('deltaWl');
+    const finalWlSpan = document.getElementById('finalWl');
+
+    // 物理常数 (SI units: m, s, kg)
+    const H = 6.626e-34; // 普朗克常数 J·s
+    const ME = 9.109e-31; // 电子静止质量 kg
+    const C = 2.998e8; // 光速 m/s
+    
+    // 康普顿波长 (h / me*c) - 转换为皮米 (pm = 10^-12 m)
+    const COMPTON_WL_METER = H / (ME * C); // 约 2.426e-12 m
+    const COMPTON_WL_PM = COMPTON_WL_METER * 1e12; // 约 2.426 pm
+
+    // 状态变量
+    let scatterAngle = parseFloat(angleSlider.value); // 角度 (度)
+    let initialWavelengthNM = parseFloat(wlSlider.value); // 入射波长 (nm)
+
+    document.getElementById('comptonWl').textContent = COMPTON_WL_PM.toFixed(2) + ' pm';
+
+    // --- 绘图函数 ---
+    function drawDiagram() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const w = canvas.width;
+        const h = canvas.height;
+        const centerX = w / 4;
+        const centerY = h / 2;
+        const radius = 100;
+        const electronRadius = 8;
+        const fontSize = 14;
+
+        // 1. 绘制静止电子 (靶点)
+        ctx.fillStyle = '#f00';
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, electronRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = `${fontSize}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.fillText("电子 (e)", centerX, centerY + electronRadius + 15);
+
+        // 2. 绘制入射光子 ($\lambda_0$)
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, centerY);
+        ctx.lineTo(centerX - electronRadius, centerY);
+        ctx.stroke();
+        ctx.textAlign = 'left';
+        // 使用字符串直接写入，避免Canvas内渲染LaTeX
+        ctx.fillText(`入射 λ0 (${initialWavelengthNM.toFixed(3)} nm)`, 5, centerY - 15);
+
+        // 3. 绘制散射光子 ($\lambda'$)
+        const angleRad = scatterAngle * (Math.PI / 180);
+        const endX = centerX + radius * Math.cos(angleRad);
+        const endY = centerY - radius * Math.sin(angleRad);
+        
+        // 颜色提示：波长越长 (Delta Lambda 越大)，越偏向红色
+        let colorIntensity = Math.min(1, Math.abs(scatterAngle - 90) / 90);
+        let red = Math.round(255 * colorIntensity);
+        let blue = Math.round(255 * (1 - colorIntensity));
+        ctx.strokeStyle = `rgb(${red}, 200, ${blue})`; 
+        
+        ctx.beginPath();
+        ctx.moveTo(centerX + electronRadius * Math.cos(angleRad), centerY - electronRadius * Math.sin(angleRad));
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+
+        // 4. 绘制散射角 $\phi$
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 30, 0, -angleRad, true); 
+        ctx.stroke();
+
+        // 5. 标记 $\phi$
+        ctx.textAlign = 'center';
+        ctx.fillText(`φ = ${scatterAngle.toFixed(1)}°`, centerX + 40, centerY - 25);
+        
+        // 6. 标记 $\lambda'$
+        ctx.textAlign = 'right';
+        ctx.fillText(`散射 λ'`, endX, endY - 10);
+
+
+        // --- 绘制光谱图 ---
+        const chartX = w / 2 + 50;
+        const chartY = h - 50;
+        const chartW = w / 2 - 70;
+        const chartH = h - 80;
+        
+        // X 轴 (波长 $\lambda$)
+        ctx.strokeStyle = '#ccc';
+        ctx.beginPath();
+        ctx.moveTo(chartX, chartY);
+        ctx.lineTo(chartX + chartW, chartY);
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillText("波长 λ", chartX + chartW / 2, chartY + 30);
+        
+        // 原始波长 $\lambda_0$ 标记
+        const wl0X = chartX + chartW * 0.3; // 固定在 30% 位置
+        ctx.strokeStyle = '#00ffff';
+        ctx.beginPath();
+        ctx.moveTo(wl0X, chartY);
+        ctx.lineTo(wl0X, chartY - chartH * 0.7);
+        ctx.stroke();
+        ctx.fillText(`λ0`, wl0X, chartY - chartH * 0.7 - 10);
+
+        // 散射波长 $\lambda'$ 标记
+        const deltaLambdaNM = COMPTON_WL_METER * (1 - Math.cos(angleRad)) * 1e9;
+        const deltaX = chartW * (deltaLambdaNM / (COMPTON_WL_METER * 2 * 1e9)); 
+        const wlPrimeX = wl0X + deltaX * 0.9;
+        
+        // 绘制光谱峰值 (简化高斯曲线)
+        const peakHeight = chartH * 0.6;
+        const widthFactor = 10;
+
+        function drawPeak(x, color, height, label) {
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(x - widthFactor, chartY);
+            ctx.bezierCurveTo(x - widthFactor, chartY - height * 0.5, x + widthFactor, chartY - height * 0.5, x + widthFactor, chartY);
+            ctx.stroke();
+            ctx.fillText(label, x, chartY - peakHeight - 10);
+        }
+
+        // 绘制未移动峰 (与束缚电子散射)
+        drawPeak(wl0X, '#00ffff', peakHeight * 0.8, 'λ0');
+
+        // 绘制移动峰 (与自由电子散射)
+        ctx.lineWidth = 2;
+        drawPeak(wlPrimeX, `rgb(${red}, 200, ${blue})`, peakHeight, "λ'");
+
+        // 标记 $\Delta \lambda$
+        ctx.strokeStyle = '#ffcc00';
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(wl0X, chartY + 5);
+        ctx.lineTo(wlPrimeX, chartY + 5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillText(`Δλ`, (wl0X + wlPrimeX) / 2, chartY + 20);
+    }
+
+    // --- 计算和更新 ---
+    function updateCalculations() {
+        // 弧度
+        const angleRad = scatterAngle * (Math.PI / 180);
+        
+        // 计算波长移动量 (Delta Lambda) - 结果为米
+        const deltaLambdaM = COMPTON_WL_METER * (1 - Math.cos(angleRad));
+        
+        // 转换为皮米 (pm) 和纳米 (nm)
+        const deltaLambdaPM = deltaLambdaM * 1e12; // pm
+        const initialWavelengthM = initialWavelengthNM * 1e-9; // m
+        
+        // 散射后波长
+        const finalWavelengthM = initialWavelengthM + deltaLambdaM;
+        const finalWavelengthNM = finalWavelengthM * 1e9; // nm
+
+        // 更新 UI
+        deltaWlSpan.textContent = deltaLambdaPM.toFixed(2) + ' pm';
+        finalWlSpan.textContent = finalWavelengthNM.toFixed(3) + ' nm';
+
+        drawDiagram();
+    }
+
+    // --- 事件监听 ---
+    angleSlider.addEventListener('input', (e) => {
+        scatterAngle = parseFloat(e.target.value);
+        angleValSpan.textContent = scatterAngle.toFixed(1) + '°';
+        updateCalculations();
+    });
+
+    wlSlider.addEventListener('input', (e) => {
+        initialWavelengthNM = parseFloat(e.target.value);
+        initialWlValSpan.textContent = initialWavelengthNM.toFixed(3) + ' nm';
+        updateCalculations();
+    });
+
+    // 初始运行
+    updateCalculations();
+
+</script>
+</body>
+</html>

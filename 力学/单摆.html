@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>理想单摆交互式物理仿真 (含实时波形图)</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --panel-bg: #ffffff;
+            --text: #1e293b;
+            --border: #e2e8f0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            align-items: flex-start;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1200px;
+            width: 100%;
+        }
+        .controls {
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            width: 330px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex-shrink: 0;
+        }
+        .canvas-container {
+            background: var(--panel-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        canvas {
+            background: #fafafa;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            max-width: 100%;
+        }
+        #graphCanvas {
+            margin-top: 15px;
+            background: #ffffff;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        button:hover { background: #1d4ed8; }
+        
+        .energy-bar-container {
+            width: 100%;
+            height: 10px;
+            background: #e2e8f0;
+            border-radius: 5px;
+            overflow: hidden;
+            display: flex;
+            margin-top: 5px;
+        }
+        .kinetic { background: #3b82f6; transition: width 0.05s linear; }
+        .potential { background: #10b981; transition: width 0.05s linear; }
+        .energy-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .math-panel {
+            background: #f1f5f9;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            font-family: "Cambria Math", "Times New Roman", serif;
+        }
+        .math-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 15px;
+        }
+        .math-variable {
+            font-style: italic;
+        }
+        .math-value {
+            font-family: monospace;
+            font-weight: bold;
+            color: #0f172a;
+        }
+        .math-equation {
+            text-align: center;
+            font-weight: bold;
+            color: #b91c1c; 
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed #94a3b8;
+        }
+        .math-period {
+            text-align: center;
+            font-weight: bold;
+            color: #0f172a; 
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #cbd5e1;
+        }
+        .math-sub {
+            font-size: 12px;
+            color: #64748b;
+            font-family: sans-serif;
+            text-align: center;
+            margin-top: 4px;
+        }
+        
+        .kinematics-panel {
+            margin-top: 20px;
+            width: 100%;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        .kinematics-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+        .kinematics-fixed {
+            font-family: "Cambria Math", "Times New Roman", serif;
+            font-size: 20px;
+            color: var(--primary);
+            margin-bottom: 12px;
+        }
+        .kinematics-dynamic {
+            font-family: monospace;
+            font-size: 16px;
+            color: #0f172a;
+            background: #ffffff;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px dashed #cbd5e1;
+            display: inline-block;
+            text-align: left;
+            line-height: 1.8;
+        }
+        .error-text {
+            color: #ef4444;
+            font-weight: bold;
+        }
+        .highlight-note {
+            background-color: #fffbeb;
+            border-left: 4px solid #f59e0b;
+            padding: 8px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #78350f;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="controls">
+        <h2 style="margin-top: 0; font-size: 20px; color: var(--primary);">控制面板</h2>
+        
+        <div class="control-group">
+            <label>摆长 L (m) <span id="valL">2.0</span></label>
+            <input type="range" id="slL" min="0.5" max="4.0" step="0.1" value="2.0">
+        </div>
+        
+        <div class="control-group">
+            <label>摆球质量 m (kg) <span id="valM">1.0</span></label>
+            <input type="range" id="slM" min="0.1" max="5.0" step="0.1" value="1.0">
+        </div>
+        
+        <div class="control-group">
+            <label>重力加速度 g (m/s²) <span id="valG">9.8</span></label>
+            <input type="range" id="slG" min="1.0" max="20.0" step="0.1" value="9.8">
+        </div>
+
+        <div class="control-group" style="margin-top: 5px;">
+            <label>
+                <input type="checkbox" id="cbForces" checked> 显示受力分析 (基于教材)
+            </label>
+        </div>
+
+        <div class="control-group math-panel">
+            <div style="font-family: sans-serif; font-weight: bold; font-size: 14px; margin-bottom: 10px; color: var(--primary);">实时振动数据 (微积分形式)</div>
+            <div class="math-row">
+                <span>偏角 <span class="math-variable">θ</span></span>
+                <span><span class="math-value" id="rt-theta">0.000</span> rad (<span id="rt-deg" style="font-size:12px;color:#64748b;">0.0°</span>)</span>
+            </div>
+            <div class="math-row">
+                <span>瞬时角速度 <span class="math-variable">dθ/dt</span></span>
+                <span><span class="math-value" id="rt-omega">0.000</span> rad/s</span>
+            </div>
+            <div class="math-row">
+                <span>瞬时角加速度 <span class="math-variable">d²θ/dt²</span></span>
+                <span><span class="math-value" id="rt-alpha">0.000</span> rad/s²</span>
+            </div>
+            <div class="math-equation">
+                d²θ/dt² = -(g/L) sin(θ)
+                <div style="margin-top: 5px; font-family: monospace; font-size: 14px;">
+                    <span id="rt-lhs">0.000</span> = <span id="rt-rhs">0.000</span>
+                </div>
+                <div class="math-sub">↑ 观察等式两边在运动中始终相等</div>
+            </div>
+            <div class="math-period">
+                <div style="font-size: 13px; margin-bottom: 4px; color: #475569; font-family: sans-serif;">小角近似理论周期</div>
+                T = 2π√(L/g)
+                <div style="margin-top: 5px; font-family: monospace; font-size: 16px; color: var(--primary);">
+                    T ≈ <span id="rt-period">0.000</span> s
+                </div>
+            </div>
+        </div>
+
+        <button id="btnPlay">暂停 / 继续</button>
+        <button id="btnReset" style="background: #64748b;">重置到初始状态</button>
+
+        <hr style="width: 100%; border: 0; border-top: 1px solid var(--border);">
+
+        <div class="control-group">
+            <label style="font-size: 15px;">机械能守恒监控</label>
+            <div class="energy-bar-container">
+                <div id="barKinetic" class="kinetic" style="width: 0%;"></div>
+                <div id="barPotential" class="potential" style="width: 100%;"></div>
+            </div>
+            <div class="energy-labels">
+                <span style="color: #3b82f6;">■ 动能</span>
+                <span style="color: #10b981;">■ 势能</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="pendulumCanvas" width="800" height="500"></canvas>
+        <p style="color: #64748b; font-size: 14px; margin-top: 15px; margin-bottom: 0;">用鼠标拖拽小球可以改变初始偏角 θ，观察不同初始角度下的公式误差</p>
+        
+        <div class="kinematics-panel">
+            <div class="kinematics-title">简谐振动运动学方程 vs 真实物理状态</div>
+            <div class="kinematics-fixed">理论近似：θ = θₘ cos(ω₀t + φ)</div>
+            <div class="kinematics-dynamic">
+                <div>[理论公式] θ = <span id="kin-A" style="color: #3b82f6;" title="最大角位移">0.000</span> × cos( <span id="kin-w" style="color: #8b5cf6;" title="固有角频率">0.000</span> × <span id="kin-t" style="color: #10b981;">0.000</span>s ) = <strong><span id="kin-result" style="color:#2563eb;">0.000</span></strong> rad</div>
+                <div>[真实状态] 动画中小球的实际偏角 θ = <strong><span id="kin-real">0.000</span></strong> rad</div>
+                <div style="border-top: 1px dashed #cbd5e1; margin-top: 5px; padding-top: 5px;">
+                    ▶ <span class="error-text">理论与真实误差: <span id="kin-error">0.000</span> rad</span>
+                </div>
+            </div>
+            <div class="highlight-note">
+                <strong>📝 符号避坑指南：</strong><br>
+                1. 这里的 <strong>θₘ (振幅)</strong> 代表初始释放时的最大角度（弧度），它不是摆长 L。<br>
+                2. 这里的 <strong>ω₀ = √(g/L)</strong> 是系统自带的“固有角频率 (常数)”，不要和左边面板里不断变化的“瞬时角速度 (变量)”混淆！
+            </div>
+        </div>
+
+        <canvas id="graphCanvas" width="800" height="180"></canvas>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('pendulumCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 获取新增的波形图画板
+    const graphCanvas = document.getElementById('graphCanvas');
+    const gCtx = graphCanvas.getContext('2d');
+
+    let g = 9.8;
+    let L = 2.0;
+    let m = 1.0;
+    
+    let theta = Math.PI / 4; 
+    let omega = 0; 
+    let alpha = 0; 
+    
+    let simTime = 0;
+    let amplitude = Math.PI / 4;
+    
+    let isPlaying = true;
+    let isDragging = false;
+    
+    // 波形图历史数据存储
+    let historyData = [];
+    const timeWindow = 8; // 图表在X轴上显示过去8秒的数据
+
+    const scale = 120;
+    const originX = canvas.width / 2;
+    const originY = 50;
+
+    const slL = document.getElementById('slL');
+    const slM = document.getElementById('slM');
+    const slG = document.getElementById('slG');
+    const cbForces = document.getElementById('cbForces');
+
+    function updatePeriod() {
+        const period = 2 * Math.PI * Math.sqrt(L / g);
+        document.getElementById('rt-period').innerText = period.toFixed(3);
+    }
+
+    function updateLabels() {
+        document.getElementById('valL').innerText = parseFloat(slL.value).toFixed(1);
+        document.getElementById('valM').innerText = parseFloat(slM.value).toFixed(1);
+        document.getElementById('valG').innerText = parseFloat(slG.value).toFixed(1);
+        updatePeriod(); 
+    }
+
+    slL.addEventListener('input', () => { L = parseFloat(slL.value); updateLabels(); });
+    slM.addEventListener('input', () => { m = parseFloat(slM.value); updateLabels(); });
+    slG.addEventListener('input', () => { g = parseFloat(slG.value); updateLabels(); });
+
+    document.getElementById('btnPlay').addEventListener('click', () => isPlaying = !isPlaying);
+    document.getElementById('btnReset').addEventListener('click', () => {
+        theta = Math.PI / 4;
+        omega = 0;
+        simTime = 0;
+        amplitude = Math.PI / 4;
+        historyData = []; // 重置时清空图表
+        if(!isPlaying) isPlaying = true;
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left - originX;
+        const mouseY = e.clientY - rect.top - originY;
+        const bobX = L * scale * Math.sin(theta);
+        const bobY = L * scale * Math.cos(theta);
+        
+        if (Math.sqrt((mouseX - bobX)**2 + (mouseY - bobY)**2) < 30) {
+            isDragging = true;
+            isPlaying = false;
+            omega = 0;
+            alpha = 0;
+            simTime = 0; 
+            historyData = []; // 拖拽时清空图表重新记录
+        }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left - originX;
+            const mouseY = e.clientY - rect.top - originY;
+            theta = Math.atan2(mouseX, mouseY);
+            amplitude = theta; 
+            updateMathPanel();
+            updateKinematicsPanel();
+        }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+        if(isDragging) {
+            isDragging = false;
+            isPlaying = true;
+            amplitude = theta; 
+            simTime = 0;       
+        }
+    });
+
+    function drawArrow(fromx, fromy, tox, toy, color) {
+        const headlen = 10;
+        const angle = Math.atan2(toy - fromy, tox - fromx);
+        ctx.beginPath();
+        ctx.moveTo(fromx, fromy);
+        ctx.lineTo(tox, toy);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(tox, toy);
+        ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.lineTo(tox, toy);
+        ctx.fillStyle = color;
+        ctx.fill();
+    }
+
+    function updateMathPanel() {
+        const currentAlpha = -(g / L) * Math.sin(theta);
+        
+        document.getElementById('rt-theta').innerText = (theta >= 0 ? "+" : "") + theta.toFixed(3);
+        document.getElementById('rt-deg').innerText = (theta * 180 / Math.PI).toFixed(1) + "°";
+        document.getElementById('rt-omega').innerText = (omega >= 0 ? "+" : "") + omega.toFixed(3);
+        document.getElementById('rt-alpha').innerText = (currentAlpha >= 0 ? "+" : "") + currentAlpha.toFixed(3);
+        
+        const rhsValue = -(g / L) * Math.sin(theta);
+        document.getElementById('rt-lhs').innerText = (currentAlpha >= 0 ? "+" : "") + currentAlpha.toFixed(3);
+        document.getElementById('rt-rhs').innerText = (rhsValue >= 0 ? "+" : "") + rhsValue.toFixed(3);
+    }
+
+    function updateKinematicsPanel() {
+        const w0 = Math.sqrt(g / L);
+        const theoreticalTheta = amplitude * Math.cos(w0 * simTime);
+        const error = Math.abs(theoreticalTheta - theta);
+
+        const formatNum = (num) => (num >= 0 ? "+" : "") + num.toFixed(3);
+
+        document.getElementById('kin-A').innerText = formatNum(amplitude);
+        document.getElementById('kin-w').innerText = w0.toFixed(3);
+        document.getElementById('kin-t').innerText = simTime.toFixed(3);
+        document.getElementById('kin-result').innerText = formatNum(theoreticalTheta);
+        document.getElementById('kin-real').innerText = formatNum(theta);
+        document.getElementById('kin-error').innerText = error.toFixed(4);
+    }
+    
+    // 新增：绘制实时波形图
+    function drawGraph() {
+        gCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+        
+        const padX = 40;
+        const padY = 20;
+        const w = graphCanvas.width - padX - 20;
+        const h = graphCanvas.height - padY * 2;
+        const cy = padY + h / 2;
+        
+        // 绘制坐标轴
+        gCtx.beginPath();
+        gCtx.moveTo(padX, padY);
+        gCtx.lineTo(padX, padY + h); // Y轴
+        gCtx.moveTo(padX, cy);
+        gCtx.lineTo(padX + w, cy);   // X轴
+        gCtx.strokeStyle = '#94a3b8';
+        gCtx.lineWidth = 1;
+        gCtx.stroke();
+        
+        // 绘制标签
+        gCtx.fillStyle = '#64748b';
+        gCtx.font = '12px sans-serif';
+        gCtx.fillText('θ(rad)', 5, padY + 5);
+        gCtx.fillText('时间 t(s)', padX + w - 40, cy + 15);
+        
+        // 绘制图例
+        gCtx.font = '13px sans-serif';
+        gCtx.fillStyle = '#2563eb';
+        gCtx.fillText('── 公式理论曲线 cos(ω₀t)', padX + 20, padY + 5);
+        gCtx.fillStyle = '#10b981';
+        gCtx.fillText('- - - 真实物理运动轨迹', padX + 220, padY + 5);
+
+        if (historyData.length < 2) return;
+        
+        // 动态计算 Y 轴缩放比例
+        const maxTheta = Math.max(Math.abs(amplitude), 0.1) * 1.2; 
+        
+        // 让X轴随着时间向左平移 (示波器效果)
+        const currentTMax = Math.max(timeWindow, simTime);
+        const currentTMin = currentTMax - timeWindow;
+        
+        const getX = (t) => padX + ((t - currentTMin) / timeWindow) * w;
+        const getY = (th) => cy - (th / maxTheta) * (h / 2);
+        
+        // 1. 绘制理论曲线 (蓝色实线)
+        gCtx.beginPath();
+        gCtx.strokeStyle = '#2563eb'; 
+        gCtx.lineWidth = 2;
+        for (let i = 0; i < historyData.length; i++) {
+            const pt = historyData[i];
+            const x = getX(pt.t);
+            const y = getY(pt.theory);
+            if (i === 0) gCtx.moveTo(x, y);
+            else gCtx.lineTo(x, y);
+        }
+        gCtx.stroke();
+
+        // 2. 绘制真实物理曲线 (绿色虚线)
+        gCtx.beginPath();
+        gCtx.strokeStyle = '#10b981'; 
+        gCtx.lineWidth = 2;
+        gCtx.setLineDash([5, 5]); 
+        for (let i = 0; i < historyData.length; i++) {
+            const pt = historyData[i];
+            const x = getX(pt.t);
+            const y = getY(pt.real);
+            if (i === 0) gCtx.moveTo(x, y);
+            else gCtx.lineTo(x, y);
+        }
+        gCtx.stroke();
+        gCtx.setLineDash([]); // 恢复实线
+    }
+
+    let lastTime = 0;
+    function animate(time) {
+        const dt = lastTime ? (time - lastTime) / 1000 : 0.016;
+        lastTime = time;
+
+        if (isPlaying && !isDragging) {
+            const stepAlpha = -(g / L) * Math.sin(theta);
+            omega += stepAlpha * dt;
+            theta += omega * dt;
+            
+            simTime += dt; 
+            
+            // 记录当前帧的数据，用于绘制图表
+            const w0 = Math.sqrt(g / L);
+            const theoreticalTheta = amplitude * Math.cos(w0 * simTime);
+            historyData.push({ t: simTime, real: theta, theory: theoreticalTheta });
+            
+            // 剔除超出显示窗口的旧数据，避免内存溢出
+            while (historyData.length > 0 && historyData[0].t < simTime - timeWindow) {
+                historyData.shift();
+            }
+
+            updateMathPanel();
+            updateKinematicsPanel(); 
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const bobX = originX + L * scale * Math.sin(theta);
+        const bobY = originY + L * scale * Math.cos(theta);
+
+        ctx.beginPath();
+        ctx.moveTo(originX - 50, originY);
+        ctx.lineTo(originX + 50, originY);
+        for(let i=-50; i<50; i+=10) {
+            ctx.moveTo(originX + i, originY);
+            ctx.lineTo(originX + i + 10, originY - 10);
+        }
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.setLineDash([5, 5]);
+        ctx.moveTo(originX, originY);
+        ctx.lineTo(originX, originY + L * scale + 50);
+        ctx.strokeStyle = '#94a3b8';
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        ctx.moveTo(originX, originY);
+        ctx.lineTo(bobX, bobY);
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        if (cbForces.checked) {
+            const forceScale = 20 * m; 
+            
+            drawArrow(bobX, bobY, bobX, bobY + g * forceScale, '#ef4444');
+            ctx.fillStyle = '#ef4444';
+            ctx.fillText('mg', bobX + 10, bobY + g * forceScale);
+
+            const radForce = g * Math.cos(theta) * forceScale;
+            const rx = bobX + radForce * Math.sin(theta);
+            const ry = bobY + radForce * Math.cos(theta);
+            ctx.setLineDash([4, 4]);
+            drawArrow(bobX, bobY, rx, ry, '#f59e0b');
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillText('mg cosθ', rx + 5, ry + 15);
+
+            const tanForce = g * Math.sin(theta) * forceScale;
+            const tx = bobX - tanForce * Math.cos(theta);
+            const ty = bobY + tanForce * Math.sin(theta);
+            drawArrow(bobX, bobY, tx, ty, '#8b5cf6');
+            ctx.fillStyle = '#8b5cf6';
+            ctx.fillText('mg sinθ', tx - 40, ty + 10);
+
+            const tension = m * g * Math.cos(theta) + m * L * omega * omega;
+            const tensionScale = tension / m * 20;
+            const tenX = bobX - tensionScale * Math.sin(theta);
+            const tenY = bobY - tensionScale * Math.cos(theta);
+            drawArrow(bobX, bobY, tenX, tenY, '#3b82f6');
+            ctx.fillStyle = '#3b82f6';
+            ctx.fillText('张力 f', tenX - 40, tenY);
+        }
+
+        ctx.beginPath();
+        ctx.arc(bobX, bobY, 15 + m * 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fill();
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        const h = L - L * Math.cos(theta);
+        const PE = m * g * h; 
+        const v = Math.abs(omega * L); 
+        const KE = 0.5 * m * v * v; 
+        const TE = PE + KE; 
+
+        if (TE > 0) {
+            const kePercent = (KE / TE) * 100;
+            const pePercent = (PE / TE) * 100;
+            document.getElementById('barKinetic').style.width = kePercent + '%';
+            document.getElementById('barPotential').style.width = pePercent + '%';
+        }
+        
+        // 每帧结尾绘制波形图
+        drawGraph();
+
+        requestAnimationFrame(animate);
+    }
+
+    updateLabels();
+    updateMathPanel();
+    updateKinematicsPanel();
+    animate(0);
+</script>
+</body>
+</html>

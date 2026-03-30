@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>杨氏双缝干涉 - 光子统计模型</title>
+    <style>
+        body { margin: 0; background: #0a0a0a; color: #eee; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        canvas { background: black; border: 1px solid #333; cursor: crosshair; }
+        .controls { background: #222; padding: 20px; border-radius: 10px; margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 850px; }
+        .control-group { display: flex; flex-direction: column; }
+        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        label { font-size: 13px; color: #aaa; }
+        input[type="range"] { width: 140px; accent-color: #00ffcc; }
+        .value-display { font-family: monospace; color: #00ffcc; min-width: 50px; text-align: right; }
+        button { padding: 8px; background: #444; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        button:hover { background: #555; }
+        .active { background: #008877 !important; }
+    </style>
+</head>
+<body>
+
+    <h2 style="color: #00ffcc;">双缝干涉：从光子到波幅</h2>
+    <canvas id="mainCanvas"></canvas>
+
+    <div class="controls">
+        <div class="control-group">
+            <div class="row">
+                <label>模式切换</label>
+                <button id="modeBtn">经典连续波</button>
+            </div>
+            <div class="row">
+                <label>波长 (nm)</label>
+                <input type="range" id="waveSlider" min="400" max="750" value="532">
+                <span class="value-display"><span id="waveVal">532</span></span>
+            </div>
+            <div class="row">
+                <label>缝间距 (d/mm)</label>
+                <input type="range" id="distSlider" min="0.1" max="0.8" step="0.01" value="0.25">
+                <span class="value-display"><span id="distVal">0.25</span></span>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div class="row">
+                <label>光子速率 (点/帧)</label>
+                <input type="range" id="rateSlider" min="1" max="500" value="50">
+                <span class="value-display"><span id="rateVal">50</span></span>
+            </div>
+            <div class="row">
+                <label>已累积光子数</label>
+                <span class="value-display" id="photonCount">0</span>
+            </div>
+            <div class="row">
+                <button id="resetBtn" style="width: 100%;">重置统计数据</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    canvas.width = 850;
+    canvas.height = 350;
+
+    let isPhotonMode = false;
+    let photonBuffer = new Int32Array(canvas.width * canvas.height);
+    let totalPhotons = 0;
+
+    const sliders = {
+        wave: document.getElementById('waveSlider'),
+        dist: document.getElementById('distSlider'),
+        rate: document.getElementById('rateSlider')
+    };
+
+    // 模式切换
+    document.getElementById('modeBtn').onclick = function() {
+        isPhotonMode = !isPhotonMode;
+        this.innerText = isPhotonMode ? "光子统计模式" : "经典连续波";
+        this.classList.toggle('active');
+        resetPhotons();
+    };
+
+    document.getElementById('resetBtn').onclick = resetPhotons;
+
+    function resetPhotons() {
+        photonBuffer.fill(0);
+        totalPhotons = 0;
+        document.getElementById('photonCount').innerText = "0";
+    }
+
+    function wavelengthToRGB(lambda) {
+        let r=0, g=0, b=0;
+        if (lambda >= 380 && lambda < 440) { r = -(lambda - 440) / 60; b = 1; }
+        else if (lambda >= 440 && lambda < 490) { g = (lambda - 440) / 50; b = 1; }
+        else if (lambda >= 490 && lambda < 510) { g = 1; b = -(lambda - 510) / 20; }
+        else if (lambda >= 510 && lambda < 580) { r = (lambda - 510) / 70; g = 1; }
+        else if (lambda >= 580 && lambda < 645) { r = 1; g = -(lambda - 645) / 65; }
+        else if (lambda >= 645) { r = 1; }
+        return { r: r * 255, g: g * 255, b: b * 255 };
+    }
+
+    function getProbability(x, lambda, d) {
+        const L = 1.5; // 模拟屏距
+        const scale = 4000;
+        const screenX = (x - canvas.width/2) / scale;
+        const phase = (2 * Math.PI * (d * 1e-3) * screenX) / (lambda * 1e-9 * L);
+        return Math.pow(Math.cos(phase / 2), 2);
+    }
+
+    function loop() {
+        const lambda = parseFloat(sliders.wave.value);
+        const d = parseFloat(sliders.dist.value);
+        const rate = parseInt(sliders.rate.value);
+        const color = wavelengthToRGB(lambda);
+
+        document.getElementById('waveVal').innerText = lambda;
+        document.getElementById('distVal').innerText = d.toFixed(2);
+        document.getElementById('rateVal').innerText = rate;
+
+        if (!isPhotonMode) {
+            // 经典模式：全屏渲染
+            const imgData = ctx.createImageData(canvas.width, canvas.height);
+            for (let x = 0; x < canvas.width; x++) {
+                const prob = getProbability(x, lambda, d);
+                for (let y = 0; y < canvas.height; y++) {
+                    const idx = (y * canvas.width + x) * 4;
+                    imgData.data[idx] = color.r * prob;
+                    imgData.data[idx+1] = color.g * prob;
+                    imgData.data[idx+2] = color.b * prob;
+                    imgData.data[idx+3] = 255;
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+        } else {
+            // 光子统计模式：随机采样
+            for (let i = 0; i < rate; i++) {
+                // 1. 均匀选择一个 x 位置，但根据干涉概率决定是否“留下”光子 (接受-拒绝采样)
+                const rx = Math.floor(Math.random() * canvas.width);
+                const ry = Math.floor(Math.random() * canvas.height);
+                const prob = getProbability(rx, lambda, d);
+                
+                if (Math.random() < prob) {
+                    const idx = ry * canvas.width + rx;
+                    photonBuffer[idx]++;
+                    totalPhotons++;
+                }
+            }
+            
+            document.getElementById('photonCount').innerText = totalPhotons.toLocaleString();
+
+            // 渲染缓冲区
+            const imgData = ctx.createImageData(canvas.width, canvas.height);
+            // 找出最大亮度进行归一化，模拟曝光效果
+            const maxHits = Math.max(1, totalPhotons / (canvas.width * 5)); 
+
+            for (let j = 0; j < photonBuffer.length; j++) {
+                const hits = photonBuffer[j];
+                const intensity = Math.min(1, hits / 2); // 只要落下一个点就给一定亮度
+                const idx = j * 4;
+                imgData.data[idx] = color.r * intensity;
+                imgData.data[idx+1] = color.g * intensity;
+                imgData.data[idx+2] = color.b * intensity;
+                imgData.data[idx+3] = 255;
+            }
+            ctx.putImageData(imgData, 0, 0);
+        }
+
+        requestAnimationFrame(loop);
+    }
+
+    loop();
+</script>
+</body>
+</html>
