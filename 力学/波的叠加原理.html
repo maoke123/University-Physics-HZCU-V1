@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>物理教学演示：波的独立传播与叠加原理</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --panel: #1a1a1a;
+            --wave1: #ff3333; /* 纯红 */
+            --wave2: #3388ff; /* 纯蓝 */
+            --composite: #ffffff; /* 白色实线 */
+        }
+
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; 
+            background: var(--bg); color: #fff; 
+            display: flex; flex-direction: column; align-items: center; 
+            padding: 20px; margin: 0;
+        }
+
+        .header { text-align: center; margin-bottom: 15px; }
+        .legend { display: flex; gap: 20px; margin-bottom: 15px; font-size: 14px; font-weight: bold; }
+        
+        canvas { 
+            background: #000; border: 1px solid #333; border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+        }
+
+        .ui-panel { 
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; 
+            margin-top: 20px; background: var(--panel); 
+            padding: 20px; border-radius: 12px; width: 880px;
+            border: 1px solid #333;
+        }
+
+        .group { padding: 10px; border-radius: 6px; background: rgba(255,255,255,0.03); }
+        .group h3 { font-size: 13px; margin: 0 0 15px 0; color: #aaa; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        
+        label { display: block; font-size: 12px; margin-bottom: 10px; color: #ccc; }
+        .val { float: right; font-family: monospace; color: #fff; }
+        
+        input[type="range"] { width: 100%; margin-top: 8px; cursor: pointer; }
+
+        .btn-box { grid-column: span 3; display: flex; justify-content: center; gap: 20px; padding-top: 10px; }
+        button { 
+            padding: 10px 30px; border: none; border-radius: 4px; 
+            font-weight: bold; cursor: pointer; transition: 0.2s; 
+        }
+        #startBtn { background: #28a745; color: white; }
+        #startBtn.active { background: #f39c12; }
+        #resetBtn { background: #555; color: white; }
+        button:hover { opacity: 0.8; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>波的叠加原理 (Superposition Principle)</h2>
+    <div class="legend">
+        <span style="color: var(--wave1)">━ 波源 1 (y1)</span>
+        <span style="color: var(--wave2)">━ 波源 2 (y2)</span>
+        <span style="color: var(--composite)">━━ 合成波 (Y = y1 + y2)</span>
+    </div>
+</div>
+
+<canvas id="canvas" width="900" height="400"></canvas>
+
+<div class="ui-panel">
+    <div class="group">
+        <h3 style="color: var(--wave1)">左侧脉冲 (A1)</h3>
+        <label>振幅: <span id="a1v" class="val">80</span><input type="range" id="a1" min="-120" max="120" value="80"></label>
+        <label>波长: <span id="w1v" class="val">70</span><input type="range" id="w1" min="30" max="150" value="70"></label>
+    </div>
+    <div class="group">
+        <h3 style="color: var(--wave2)">右侧脉冲 (A2)</h3>
+        <label>振幅: <span id="a2v" class="val">80</span><input type="range" id="a2" min="-120" max="120" value="80"></label>
+        <label>波长: <span id="w2v" class="val">70</span><input type="range" id="w2" min="30" max="150" value="70"></label>
+    </div>
+    <div class="group">
+        <h3 style="color: #eee">模拟控制</h3>
+        <label>播放速度: <span id="sv" class="val">0.3</span><input type="range" id="s" min="0" max="1.5" step="0.01" value="0.3"></label>
+        <label>脉冲宽度 σ: <span id="sigv" class="val">45</span><input type="range" id="sig" min="20" max="100" value="45"></label>
+    </div>
+    <div class="btn-box">
+        <button id="startBtn" class="active">暂停</button>
+        <button id="resetBtn">重置位置</button>
+    </div>
+</div>
+
+<script>
+window.onload = function() {
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+
+    // 默认开启 run = true，打开网页立刻看到波浪运动
+    let state = {
+        run: true,
+        x1: 50, x2: 850,
+        a1: 80, w1: 70,
+        a2: 80, w2: 70,
+        spd: 0.3, sigma: 45
+    };
+
+    // UI 绑定
+    const controls = [['a1','a1'],['w1','w1'],['a2','a2'],['w2','w2'],['s','spd'],['sig','sigma']];
+    controls.forEach(([id, key]) => {
+        const el = document.getElementById(id);
+        el.oninput = () => {
+            state[key] = parseFloat(el.value);
+            document.getElementById(id+'v').innerText = el.value;
+        };
+    });
+
+    startBtn.onclick = () => {
+        state.run = !state.run;
+        startBtn.innerText = state.run ? "暂停" : "开始";
+        startBtn.className = state.run ? "active" : "";
+    };
+
+    document.getElementById('resetBtn').onclick = () => {
+        state.x1 = 50; state.x2 = 850; state.run = false;
+        startBtn.innerText = "开始";
+        startBtn.className = "";
+    };
+
+    // 获取特定点的波位移
+    function getWaveVal(x, x0, A, L) {
+        const e = Math.exp(-Math.pow(x - x0, 2) / (2 * state.sigma * state.sigma));
+        return A * e * Math.cos(2 * Math.PI * (x - x0) / L);
+    }
+
+    function draw() {
+        // 背景微弱拖影
+        ctx.fillStyle = 'rgba(10, 10, 10, 0.4)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const cy = canvas.height / 2;
+
+        if (state.run) {
+            state.x1 += 5 * state.spd;
+            state.x2 -= 5 * state.spd;
+            if (state.x1 > canvas.width + 200) { state.x1 = -200; state.x2 = canvas.width + 200; }
+        }
+
+        // 0. 绘制中心基准线
+        ctx.beginPath();
+        ctx.moveTo(0, cy);
+        ctx.lineTo(canvas.width, cy);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.stroke();
+
+        // 1. 绘制背景质点 (绝对稳定的 fillRect 画法，不报错不崩溃)
+        ctx.fillStyle = "#333333";
+        for (let i = 0; i < 60; i++) {
+            for (let j = 0; j < 15; j++) {
+                const x = i * 15 + 7.5;
+                const baseY = j * 25 + 25;
+                const y1 = getWaveVal(x, state.x1, state.a1, state.w1);
+                const y2 = getWaveVal(x, state.x2, state.a2, state.w2);
+                const weight = Math.exp(-Math.abs(baseY - cy) / 60);
+                
+                const finalY = baseY - (y1 + y2) * weight;
+                ctx.fillRect(x, finalY, 2, 2);
+            }
+        }
+
+        // 2. 绘制红色分波
+        ctx.beginPath();
+        ctx.strokeStyle = "#ff3333";
+        ctx.lineWidth = 2;
+        for(let x=0; x<canvas.width; x+=2){
+            const y = getWaveVal(x, state.x1, state.a1, state.w1);
+            x===0 ? ctx.moveTo(x, cy-y) : ctx.lineTo(x, cy-y);
+        }
+        ctx.stroke();
+
+        // 3. 绘制蓝色分波
+        ctx.beginPath();
+        ctx.strokeStyle = "#3388ff";
+        ctx.lineWidth = 2;
+        for(let x=0; x<canvas.width; x+=2){
+            const y = getWaveVal(x, state.x2, state.a2, state.w2);
+            x===0 ? ctx.moveTo(x, cy-y) : ctx.lineTo(x, cy-y);
+        }
+        ctx.stroke();
+
+        // 4. 绘制合成波 (白色实线)
+        ctx.beginPath();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([]); // 改为空数组，变成实线
+        
+        let isDrawing = false;
+        for(let x=0; x<canvas.width; x+=1){
+            // 分别计算红蓝两波在此处的包络能量 (0~1)
+            const env1 = Math.exp(-Math.pow(x - state.x1, 2) / (2 * state.sigma * state.sigma));
+            const env2 = Math.exp(-Math.pow(x - state.x2, 2) / (2 * state.sigma * state.sigma));
+
+            // 当两波真正发生重叠交汇时，才画白线
+            if (env1 > 0.05 && env2 > 0.05) {
+                const ty = getWaveVal(x, state.x1, state.a1, state.w1) + getWaveVal(x, state.x2, state.a2, state.w2);
+                if (!isDrawing) {
+                    ctx.moveTo(x, cy - ty);
+                    isDrawing = true;
+                } else {
+                    ctx.lineTo(x, cy - ty);
+                }
+            } else {
+                isDrawing = false;
+            }
+        }
+        ctx.stroke();
+
+        requestAnimationFrame(draw);
+    }
+
+    // 启动动画循环
+    draw();
+};
+</script>
+</body>
+</html>
