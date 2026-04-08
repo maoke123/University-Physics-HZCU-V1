@@ -113,7 +113,6 @@
     const canvas = document.getElementById('simCanvas');
     const ctx = canvas.getContext('2d');
     
-    // --- 物理与3D视图参数 ---
     const boxSize = { w: 150, h: 100, d: 150 }; 
     const numParticles = 80;
     const m0 = 1; 
@@ -127,7 +126,8 @@
     let particles = [];
     let impacts = []; 
     
-    let recentImpulses = []; 
+    let frameImpulses = []; 
+    const baseWindowSize = 40; 
     let smoothedPressure = 0; 
 
     class Particle {
@@ -148,6 +148,7 @@
         }
 
         update() {
+            let impulseThisFrame = 0;
             this.x += this.vx * timeScale;
             this.y += this.vy * timeScale;
             this.z += this.vz * timeScale;
@@ -156,13 +157,13 @@
                 this.x = boxSize.w - this.radius;
                 this.vx *= -1;
                 
-                let impulse = 2 * m0 * Math.abs(this.vx / timeScale); 
+                let impulse = 2 * m0 * Math.abs(this.vx); 
+                impulseThisFrame += impulse;
+                
                 impacts.push({
                     x: boxSize.w, y: this.y, z: this.z,
-                    v_x: Math.abs(this.vx / timeScale),
                     life: 1.0, maxLife: 1.0
                 });
-                recentImpulses.push(impulse);
             } else if (this.x < -boxSize.w + this.radius) {
                 this.x = -boxSize.w + this.radius;
                 this.vx *= -1;
@@ -172,6 +173,8 @@
             if (this.y < -boxSize.h + this.radius) { this.y = -boxSize.h + this.radius; this.vy *= -1; }
             if (this.z > boxSize.d - this.radius) { this.z = boxSize.d - this.radius; this.vz *= -1; }
             if (this.z < -boxSize.d + this.radius) { this.z = -boxSize.d + this.radius; this.vz *= -1; }
+            
+            return impulseThisFrame;
         }
     }
 
@@ -186,6 +189,8 @@
 
     function init() {
         particles = [];
+        frameImpulses = [];
+        for (let i = 0; i < baseWindowSize; i++) frameImpulses.push(0); 
         for (let i = 0; i < numParticles; i++) {
             particles.push(new Particle());
         }
@@ -224,77 +229,70 @@
         ctx.stroke();
     }
 
-    function drawGauge(pressure) {
+    function drawDigitalPressure(pressure) {
         const cx = canvas.width / 2;
-        const cy = 110;
-        const r = 60;
-        
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 2.2);
-        ctx.strokeStyle = '#334155'; ctx.lineWidth = 6; ctx.stroke();
-        
-        const gradient = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
-        gradient.addColorStop(0, '#10b981'); 
-        gradient.addColorStop(0.5, '#f59e0b'); 
-        gradient.addColorStop(1, '#ef4444'); 
-        
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, Math.PI * 0.8, Math.PI * 2.2);
-        ctx.strokeStyle = gradient; ctx.lineWidth = 4; ctx.stroke();
-        
-        // 调整了最大压强期望值，以适应最高温度1500K的情况
-        const maxExpectedPressure = 350; 
-        let ratio = pressure / maxExpectedPressure;
-        if(ratio > 1) ratio = 1;
-        
-        const startAngle = Math.PI * 0.8;
-        const endAngle = Math.PI * 2.2;
-        const pointerAngle = startAngle + ratio * (endAngle - startAngle);
-        
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(cx + (r - 10) * Math.cos(pointerAngle), cy + (r - 10) * Math.sin(pointerAngle));
-        ctx.strokeStyle = '#f8fafc'; ctx.lineWidth = 3; ctx.stroke();
-        
-        ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI*2);
-        ctx.fillStyle = '#f8fafc'; ctx.fill();
+        const cy = 60;
+        const boxWidth = 240;
+        const boxHeight = 80;
 
-        // 【新增】实时动态数字显示
-        ctx.fillStyle = '#0ea5e9'; // 亮蓝色更有科技感
-        ctx.font = 'bold 22px sans-serif'; 
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+        ctx.strokeStyle = '#0ea5e9';
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.rect(cx - boxWidth/2, cy - boxHeight/2, boxWidth, boxHeight);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#94a3b8'; 
+        ctx.font = '14px sans-serif'; 
         ctx.textAlign = 'center';
-        ctx.fillText(pressure.toFixed(1), cx, cy - 20); // 显示在圆心上方
+        ctx.fillText("实时统计压强 P (相对值)", cx, cy - 15);
 
-        ctx.fillStyle = '#94a3b8'; ctx.font = '12px sans-serif'; 
-        ctx.fillText("相对压强 P", cx, cy + 25);
+        ctx.fillStyle = '#38bdf8'; 
+        ctx.font = 'bold 36px sans-serif'; 
+        ctx.textAlign = 'center';
+        ctx.fillText(pressure.toFixed(1), cx, cy + 25);
     }
 
     function animate() {
         ctx.fillStyle = 'rgba(15, 23, 42, 1.0)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        if (Math.random() < 0.1 * (1/timeScale)) {
-            recentImpulses.shift(); 
-        }
-        let currentTotalImpulse = recentImpulses.reduce((a, b) => a + b, 0);
-        smoothedPressure += (currentTotalImpulse - smoothedPressure) * 0.05;
-        
-        // 绘制更新后的仪表盘
-        drawGauge(smoothedPressure);
+        let currentFrameImpulse = 0;
 
         particles.sort((a, b) => b.z - a.z);
         drawBox();
 
         for (let p of particles) {
-            p.update();
-            const proj = project(p.x, p.y, p.z);
+            currentFrameImpulse += p.update();
             
+            const proj = project(p.x, p.y, p.z);
             ctx.beginPath();
             ctx.arc(proj.x, proj.y, p.radius * proj.scale, 0, Math.PI * 2);
             const depthAlpha = Math.max(0.2, 1 - (p.z + boxSize.d) / (2 * boxSize.d));
             ctx.fillStyle = `rgba(226, 232, 240, ${depthAlpha})`; 
             ctx.fill();
         }
+        
+        let targetWindowSize = Math.round(baseWindowSize / timeScale);
+        
+        frameImpulses.push(currentFrameImpulse);
+        while (frameImpulses.length > targetWindowSize) {
+            frameImpulses.shift();
+        }
+
+        let totalImpulseInWindow = frameImpulses.reduce((a, b) => a + b, 0);
+        let simTimeWindow = frameImpulses.length * timeScale; 
+        
+        let targetPressure = 0;
+        if (simTimeWindow > 0) {
+            targetPressure = (totalImpulseInWindow / simTimeWindow) * 80;
+        }
+        
+        smoothedPressure += (targetPressure - smoothedPressure) * 0.2;
+        
+        drawDigitalPressure(smoothedPressure);
 
         for (let i = impacts.length - 1; i >= 0; i--) {
             let imp = impacts[i];
@@ -327,23 +325,45 @@
         let newTemp = parseFloat(e.target.value);
         document.getElementById('tempVal').innerText = newTemp;
         
-        let ratio = Math.sqrt(newTemp / temperature);
+        let velocityRatio = Math.sqrt(newTemp / temperature);
+        let pressureRatio = newTemp / temperature; 
+
+        smoothedPressure *= pressureRatio;
+        frameImpulses = frameImpulses.map(val => val * pressureRatio);
+
         temperature = newTemp;
+        
         for(let p of particles) {
-            p.vx *= ratio;
-            p.vy *= ratio;
-            p.vz *= ratio;
+            p.vx *= velocityRatio;
+            p.vy *= velocityRatio;
+            p.vz *= velocityRatio;
         }
     });
 
+    // 【核心修复】：时间流速切换时，平滑重构历史数据矩阵
     window.setTimeScale = function(scale) {
+        if (timeScale === scale) return;
+
         timeScale = scale;
+        
         if(scale === 1) {
             document.getElementById('btnNormal').classList.add('active');
             document.getElementById('btnSlow').classList.remove('active');
         } else {
             document.getElementById('btnSlow').classList.add('active');
             document.getElementById('btnNormal').classList.remove('active');
+        }
+
+        // 重新计算目标窗口大小
+        let targetWindowSize = Math.round(baseWindowSize / timeScale);
+        
+        // 反推：为了维持当前的 smoothedPressure，新时间流速下每帧“理论上”应该有多少冲量
+        let targetAvgImpulsePerFrame = (smoothedPressure / 80) * timeScale;
+        
+        // 重构记忆数组：清空旧数据，用等价的新平均值填满
+        frameImpulses = [];
+        for(let i = 0; i < targetWindowSize; i++) {
+            frameImpulses.push(targetAvgImpulsePerFrame);
         }
     };
 
