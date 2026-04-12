@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物理实验室：简谐运动三维态映射</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --panel-bg: rgba(22, 27, 34, 0.85);
+            --text-color: #c9d1d9;
+            --accent-glow: #58a6ff; 
+            --shm-wave: #ff3366;    
+            --spring-color: #3fb950; /* 弹簧专属绿色 */
+            --border-color: #30363d;
+            --disc-base: #1c212a;
+            --disc-edge: #4a5464;
+        }
+
+        body {
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        header {
+            width: 100%;
+            padding: 15px 0;
+            text-align: center;
+            background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 100%);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 10;
+        }
+        h1 { margin: 0; font-size: 1.2rem; letter-spacing: 2px; color: #fff;}
+        h1 span.blue { color: var(--accent-glow); text-shadow: 0 0 10px var(--accent-glow); }
+        h1 span.green { color: var(--spring-color); text-shadow: 0 0 10px var(--spring-color); }
+        h1 span.red { color: var(--shm-wave); text-shadow: 0 0 10px var(--shm-wave); }
+
+        #viewport {
+            position: relative;
+            flex-grow: 1;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas { display: block; }
+
+        #controls {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            width: 320px;
+            background-color: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            z-index: 20;
+        }
+
+        .control-group { display: flex; flex-direction: column; }
+        .label-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 12px; color: #8b949e; }
+        .val-display { color: #fff; font-weight: bold; }
+
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: #21262d; border-radius: 3px; }
+        input[type=range]::-webkit-slider-thumb {
+            height: 16px; width: 16px; border-radius: 50%; background: var(--text-color);
+            cursor: pointer; -webkit-appearance: none; margin-top: -5px; transition: transform 0.2s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+        button {
+            background-color: #21262d; color: var(--text-color); border: 1px solid var(--border-color);
+            padding: 8px 15px; border-radius: 6px; cursor: pointer; font-family: inherit; transition: all 0.2s;
+        }
+        button:hover { background-color: #30363d; border-color: #8b949e; }
+        .btn-row { display: flex; gap: 10px; }
+        .btn-row button { flex: 1; }
+        button.active { background-color: #d73a49; color: #fff; border-color: transparent; }
+
+        #status-panel {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            pointer-events: none;
+            backdrop-filter: blur(10px);
+        }
+        .stat-item { margin-bottom: 8px; color: #8b949e; }
+        .stat-item:last-child { margin-bottom: 0; }
+        .stat-item b { color: #fff; font-size: 16px; display: inline-block; width: 60px; text-align: right;}
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1><span class="blue">旋转矢量</span> ⇌ <span class="green">弹簧振子</span> ⇌ <span class="red">波形轨迹</span></h1>
+    </header>
+
+    <div id="viewport">
+        <canvas id="mainCanvas"></canvas>
+        
+        <div id="status-panel">
+            <div class="stat-item">时间 (t): <b id="statT">0.0s</b></div>
+            <div class="stat-item">相位 (θ): <b id="statTheta">0°</b></div>
+            <div class="stat-item">位移 (y): <b id="statY">0.0</b></div>
+        </div>
+
+        <div id="controls">
+            <div class="control-group">
+                <div class="label-row"><span>振幅 (Amplitude)</span> <span id="valA" class="val-display">120</span></div>
+                <input type="range" id="rangeA" min="30" max="180" value="120">
+            </div>
+            <div class="control-group">
+                <div class="label-row"><span>角速度 (Angular Vel)</span> <span id="valW" class="val-display">0.04</span></div>
+                <input type="range" id="rangeW" min="0.01" max="0.15" step="0.01" value="0.04">
+            </div>
+            <div class="control-group">
+                <div class="label-row"><span>初相位 (Initial Phase)</span> <span id="valPhi" class="val-display">0</span>°</div>
+                <input type="range" id="rangePhi" min="0" max="360" value="0">
+            </div>
+            <div class="btn-row">
+                <button id="btnPause">暂停</button>
+                <button id="btnReset">清除轨迹</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+
+        function resize() {
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+            ctx.scale(dpr, dpr);
+        }
+        window.onresize = resize;
+        resize();
+
+        // 核心参数
+        let A = 120; 
+        let omega = 0.04; 
+        let phi = 0; 
+        let time = 0;
+        let isPaused = false;
+        let waveHistory = []; 
+
+        // 交互逻辑
+        const updateVal = (id, val) => document.getElementById(id).innerText = val;
+        
+        document.getElementById('rangeA').oninput = e => { A = +e.target.value; updateVal('valA', A); waveHistory = []; };
+        document.getElementById('rangeW').oninput = e => { omega = +e.target.value; updateVal('valW', omega); waveHistory = []; };
+        document.getElementById('rangePhi').oninput = e => { phi = (e.target.value * Math.PI / 180); updateVal('valPhi', e.target.value); waveHistory = []; };
+
+        const btnPause = document.getElementById('btnPause');
+        btnPause.onclick = function() {
+            isPaused = !isPaused;
+            this.innerText = isPaused ? "继续" : "暂停";
+            this.classList.toggle('active', isPaused);
+        };
+        document.getElementById('btnReset').onclick = () => waveHistory = [];
+
+        // 绘制弹簧辅助函数
+        function drawSpring(x, topY, bottomY, coils, width) {
+            ctx.beginPath();
+            ctx.moveTo(x, topY);
+            
+            // 确保弹簧不会完全压死，保留最小高度
+            let actualBottomY = Math.max(topY + 10, bottomY); 
+            let totalSpringHeight = actualBottomY - topY;
+            
+            let segmentHeight = totalSpringHeight / (coils * 2 + 2);
+            let currentY = topY + segmentHeight;
+            
+            ctx.lineTo(x, currentY); 
+            
+            for (let i = 0; i < coils; i++) {
+                ctx.lineTo(x + width/2, currentY + segmentHeight);
+                currentY += segmentHeight * 2;
+                ctx.lineTo(x - width/2, currentY);
+            }
+            
+            ctx.lineTo(x, actualBottomY - segmentHeight);
+            ctx.lineTo(x, actualBottomY);
+            ctx.stroke();
+        }
+
+        function draw() {
+            if (!isPaused) time += 1;
+
+            const cw = window.innerWidth;
+            const ch = window.innerHeight;
+            const centerY = ch * 0.5;
+            
+            // 布局坐标分配
+            const L = {
+                circleX: cw * 0.22,
+                springX: cw * 0.5,
+                waveX: cw * 0.65
+            };
+
+            // 清屏 (带残影)
+            ctx.fillStyle = 'rgba(13, 17, 23, 0.3)'; 
+            ctx.fillRect(0, 0, canvas.width/dpr, canvas.height/dpr);
+
+            // 1. 计算当前运动学状态
+            let theta = omega * time + phi;
+            let currentYOffset = -A * Math.sin(theta); // 向上为负(Canvas坐标系)
+            let vectorX = L.circleX + A * Math.cos(theta);
+            let targetY = centerY + currentYOffset; 
+
+            // 更新仪表盘
+            document.getElementById('statT').innerText = (time/60).toFixed(1) + 's';
+            document.getElementById('statTheta').innerText = ((theta % (Math.PI*2)) * 180 / Math.PI).toFixed(0) + '°';
+            document.getElementById('statY').innerText = (-currentYOffset).toFixed(1);
+
+            // --- 阶段一：左侧 旋转矢量圆盘 ---
+            ctx.save();
+            ctx.translate(L.circleX, centerY);
+
+            // 圆盘底座
+            ctx.fillStyle = '#1c212a';
+            ctx.beginPath(); ctx.arc(0, 0, A + 20, 0, Math.PI * 2); ctx.fill();
+            
+            // 圆盘边框
+            ctx.lineWidth = 3;
+            let edgeGrad = ctx.createLinearGradient(-A, -A, A, A);
+            edgeGrad.addColorStop(0, '#4a5464'); edgeGrad.addColorStop(1, '#1c212a');
+            ctx.strokeStyle = edgeGrad; ctx.stroke();
+
+            // 十字刻度线
+            ctx.strokeStyle = '#2a313c'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(-A-10, 0); ctx.lineTo(A+10, 0); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, -A-10); ctx.lineTo(0, A+10); ctx.stroke();
+
+            ctx.restore();
+
+            // 绘制旋转矢量 (蓝)
+            ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(L.circleX, centerY); ctx.lineTo(vectorX, targetY); ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(vectorX, targetY, 6, 0, Math.PI * 2); ctx.fill();
+
+            // --- 阶段二：中间 弹簧振子 ---
+            const springTopY = centerY - A - 60; // 悬挂点
+            const blockHeight = 40;
+            const blockWidth = 40;
+            const springBottomY = targetY - blockHeight/2; // 连接到物块顶部
+
+            // 绘制悬挂天花板
+            ctx.strokeStyle = '#8b949e'; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(L.springX - 40, springTopY); ctx.lineTo(L.springX + 40, springTopY); ctx.stroke();
+            
+            // 绘制弹簧 (绿)
+            ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+            drawSpring(L.springX, springTopY, springBottomY, 8, 30);
+
+            // 绘制质量块
+            ctx.fillStyle = '#1f242e'; 
+            ctx.strokeStyle = '#8b949e'; 
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(L.springX - blockWidth/2, targetY - blockHeight/2, blockWidth, blockHeight, 5);
+            ctx.fill();
+            ctx.stroke();
+            // 质量块质心点
+            ctx.fillStyle = '#3fb950'; ctx.beginPath(); ctx.arc(L.springX, targetY, 4, 0, Math.PI * 2); ctx.fill();
+
+            // --- 阶段三：右侧 示波器波形 ---
+            // 中心平衡线
+            ctx.strokeStyle = '#2a313c'; ctx.lineWidth = 1; ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(0, centerY); ctx.lineTo(cw, centerY); ctx.stroke(); ctx.setLineDash([]);
+
+            if (!isPaused) {
+                waveHistory.unshift(targetY); 
+                if (waveHistory.length > (cw - L.waveX)) waveHistory.pop();
+            }
+
+            ctx.strokeStyle = '#ff3366'; ctx.lineWidth = 2.5; ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(255, 51, 102, 0.5)';
+            ctx.beginPath();
+            for (let i = 0; i < waveHistory.length; i++) {
+                ctx.lineTo(L.waveX + i, waveHistory[i]);
+            }
+            ctx.stroke(); ctx.shadowBlur = 0;
+
+            // --- 核心灵魂：贯穿三者的动态投影线 ---
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; 
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 6]);
+            ctx.beginPath();
+            ctx.moveTo(vectorX, targetY);     // 从矢量末端起
+            ctx.lineTo(L.waveX, targetY);     // 穿过弹簧质心，到达示波器笔尖
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 示波器笔尖发光点
+            ctx.fillStyle = '#ff3366'; ctx.beginPath(); ctx.arc(L.waveX, targetY, 5, 0, Math.PI * 2); ctx.fill();
+
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+    </script>
+</body>
+</html>
